@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "easyeconomy",
+	"version": "${version}",
+	"name": "EasyEconomy",
+	"description": "a simple server-side economy: balances, shops, currency items and challenges. geyser friendly.",
+	"authors": [ "GoatTech" ],
+	"contact": {
+		"sources": "https://github.com/GoatTech-42/EasyEconomy",
+		"issues": "https://github.com/GoatTech-42/EasyEconomy/issues"
+	},
+	"license": "MIT",
+	"icon": "assets/easyeconomy/icon.png",
+	"environment": "server",
+	"entrypoints": {
+		"main": [ "dev.easyeconomy.EasyEconomyMod" ]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "${mc}",
+		"java": ">=${java}",
+		"fabric-api": "*"
+	}
+}

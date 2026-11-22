@@ -1,0 +1,44 @@
+plugins {
+	id "net.fabricmc.fabric-loom" version "${loom_version}"
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+processResources {
+	inputs.property "version", project.version
+	inputs.property "mc", project.mc_range
+	inputs.property "java", project.java_min
+	filesMatching("fabric.mod.json") { expand "version": project.version, "mc": project.mc_range, "java": project.java_min }
+}
+
+tasks.withType(JavaCompile).configureEach { it.options.release = 25 }
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+base { archivesName = "easyeconomy" }
+
+// The economy core is plain java with no minecraft imports, so it is tested
+// by a plain java main, not a framework test.
+def compileCoreTests = tasks.register('compileCoreTests', JavaCompile) {
+	source = files('tools/core-tests/TestEconomyCore.java')
+	classpath = sourceSets.main.output
+	destinationDirectory = layout.buildDirectory.dir('classes/coreTests')
+	dependsOn tasks.named('classes')
+	options.release = 25
+}
+
+def testCoreTests = tasks.register('testCoreTests', JavaExec) {
+	group = 'verification'
+	description = 'Runs the economy core assertions.'
+	dependsOn compileCoreTests
+	classpath = files(compileCoreTests.flatMap { it.destinationDirectory }) + sourceSets.main.output
+	mainClass = 'TestEconomyCore'
+}
+tasks.named('check') { dependsOn testCoreTests }
