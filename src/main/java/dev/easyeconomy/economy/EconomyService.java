@@ -76,7 +76,9 @@ public final class EconomyService {
 						// without discarding its valid siblings
 						long value;
 						try {
-							value = e.getValue().getAsLong();
+							// strict integer: getAsLong() would silently truncate
+							// a fractional balance (75.9 -> 75)
+							value = Long.parseLong(e.getValue().getAsString().trim());
 						} catch (RuntimeException bad) {
 							EasyEconomyMod.LOGGER.warn("skipping account {} with malformed balance {}", id, e.getValue());
 							continue;

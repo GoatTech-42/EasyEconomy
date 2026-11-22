@@ -485,6 +485,18 @@ public final class SelfTest {
 				Files.writeString(accounts, good);
 				eco.load();
 				check("accounts restored after row skip", eco.core().snapshot().size() >= 2 && bal(a) == balA);
+
+				// a fractional balance must not silently truncate: skip the
+				// row with a warning, keep the valid sibling, no quarantine
+				String fractional = "{\"" + a.getUUID() + "\": " + balA + ", \"" + b.getUUID() + "\": 75.9}";
+				Files.writeString(accounts, fractional);
+				eco.load();
+				check("hostile accounts: fractional balance row skipped",
+						eco.core().snapshot().size() == 1 && bal(a) == balA);
+				check("hostile accounts: fractional row not quarantined", Files.exists(accounts));
+				Files.writeString(accounts, good);
+				eco.load();
+				check("accounts restored after fractional skip", eco.core().snapshot().size() >= 2 && bal(a) == balA);
 				// an unreadable file is quarantined (renamed aside, never
 				// overwritten) so the next autosave cannot destroy it
 				Files.writeString(accounts, "{ this is not json ");
