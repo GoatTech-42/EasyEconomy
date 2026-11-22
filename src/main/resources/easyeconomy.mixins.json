@@ -5,7 +5,9 @@
 	"server": [
 		"CraftingGridMixin",
 		"CrafterBlockEntityMixin",
+		"CrafterBlockMixin",
 		"CrafterMenuMixin",
+		"CrafterSlotMixin",
 		"MerchantOfferMixin",
 		"CartographyTableMixin"
 	],

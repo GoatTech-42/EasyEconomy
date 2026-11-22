@@ -536,6 +536,61 @@ public final class SelfTest {
 				throw new IllegalStateException("hostile accounts stage failed", e);
 			}
 		});
+		// Regression stage for the independent QA findings on ecf3181: a gui
+		// close must settle the cursor stack (super.removed), and the crafter
+		// must never consume a coin through its real redstone craft path, with
+		// plain paper still crafting as the control.
+		stages.put(262, () -> {
+			a.getInventory().clearContent();
+			ShopGui.openRoot(a, EasyEconomyMod.shop(), EasyEconomyMod.economy());
+			var gui = (net.minecraft.world.inventory.ChestMenu) a.containerMenu;
+			int start = gui.getContainer().getContainerSize();
+			a.getInventory().setItem(0, new ItemStack(Items.DIAMOND, 7));
+			gui.clicked(start + 27, 0, ContainerInput.PICKUP, a);
+			check("OWN pickup precondition", gui.getCarried().is(Items.DIAMOND) && gui.getCarried().getCount() == 7);
+			a.closeContainer();
+			int returned = a.getInventory().countItem(Items.DIAMOND);
+			boolean cursorSettled = returned == 7 && gui.getCarried().isEmpty();
+			EasyEconomyMod.LOGGER.info("OWN CURSOR returned={} oldCarried={} newCarried={} settled={}", returned,
+					gui.getCarried(), a.containerMenu.getCarried(), cursorSettled);
+			var level = (net.minecraft.server.level.ServerLevel) a.level();
+			var pos = new net.minecraft.core.BlockPos(20, 100, 20);
+			level.setBlock(pos, net.minecraft.world.level.block.Blocks.CRAFTER.defaultBlockState(), 3);
+			var be = (net.minecraft.world.level.block.entity.CrafterBlockEntity) level.getBlockEntity(pos);
+			var menu = new net.minecraft.world.inventory.CrafterMenu(98, a.getInventory(), be,
+					new net.minecraft.world.inventory.SimpleContainerData(10));
+			try {
+				var fire = net.minecraft.world.level.block.CrafterBlock.class.getDeclaredMethod("dispenseFrom",
+						net.minecraft.world.level.block.state.BlockState.class,
+						net.minecraft.server.level.ServerLevel.class, net.minecraft.core.BlockPos.class);
+				fire.setAccessible(true);
+				menu.setCarried(new ItemStack(Items.PAPER));
+				menu.clicked(0, 0, ContainerInput.PICKUP, a);
+				be.setItem(1, new ItemStack(Items.GUNPOWDER));
+				check("OWN plain paper manually enters crafter", be.getItem(0).is(Items.PAPER));
+				fire.invoke(net.minecraft.world.level.block.Blocks.CRAFTER, level.getBlockState(pos), level, pos);
+				boolean plainCrafted = be.getItem(0).isEmpty() && be.getItem(1).isEmpty();
+				check("OWN plain paper redstone craft control", plainCrafted);
+				menu.setCarried(CurrencyItems.coin(1, 1));
+				menu.clicked(0, 0, ContainerInput.PICKUP, a);
+				be.setItem(1, new ItemStack(Items.GUNPOWDER));
+				boolean coinEntered = CurrencyItems.isCurrency(be.getItem(0));
+				if (!coinEntered) {
+					// placement refused at the slot: put a coin in directly so the
+					// redstone path itself is still exercised against currency
+					be.setItem(0, CurrencyItems.coin(1, 1));
+				}
+				fire.invoke(net.minecraft.world.level.block.Blocks.CRAFTER, level.getBlockState(pos), level, pos);
+				boolean coinConsumed = be.getItem(0).isEmpty() && be.getItem(1).isEmpty();
+				EasyEconomyMod.LOGGER.info("OWN CRAFTER entered={} consumed={} plainControl={}", coinEntered,
+						coinConsumed, plainCrafted);
+				check("OWN cursor items survive GUI close", cursorSettled);
+				check("OWN coins never consumed by crafter", !coinConsumed);
+				check("OWN currency blocked from crafter grid", !coinEntered);
+			} catch (ReflectiveOperationException e) {
+				throw new RuntimeException(e);
+			}
+		});
 		stages.put(265, () -> {
 			EconomyService eco = EasyEconomyMod.economy();
 			check("accounts flush", eco.save());

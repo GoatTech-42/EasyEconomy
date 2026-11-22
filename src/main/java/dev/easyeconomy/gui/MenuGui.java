@@ -89,6 +89,10 @@ public abstract class MenuGui {
 
 				@Override
 				public void removed(Player closer) {
+					// vanilla settlement first: a stack still on the cursor goes
+					// back into the player's inventory (or drops at their feet),
+					// then the gui's own close hook runs
+					super.removed(closer);
 					onClose();
 				}
 			};

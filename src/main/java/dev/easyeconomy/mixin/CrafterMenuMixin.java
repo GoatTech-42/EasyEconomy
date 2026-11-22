@@ -12,9 +12,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Manual placement in the crafter gui bypasses canPlaceItem, so the result
-// preview is cleared whenever the grid holds a currency item, same rule as
-// the player crafting grids.
+// The result preview is cleared whenever the grid holds a currency item,
+// same rule as the player crafting grids. Placement itself is refused in
+// CrafterSlotMixin and CrafterBlockEntityMixin, and the redstone craft is
+// refused in CrafterBlockMixin; this preview clearing stays as the display
+// backstop for grids that already hold a coin (old worlds, commands).
 @Mixin(CrafterMenu.class)
 public abstract class CrafterMenuMixin {
 	@Shadow
