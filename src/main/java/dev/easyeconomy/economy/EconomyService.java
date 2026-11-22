@@ -26,6 +26,9 @@ public final class EconomyService {
 	private EconomyCore core;
 	private boolean dirty;
 	private long ticksSinceSave;
+	// fail closed: set when an unreadable accounts file could not be
+	// quarantined; save() refuses until a valid load confirms recovery
+	private boolean savesBlocked;
 
 	public EconomyService(EeConfig config) {
 		this.dataDir = FabricLoader.getInstance().getGameDir().resolve("easyeconomy");
@@ -87,6 +90,7 @@ public final class EconomyService {
 				}
 				core.loadAll(data);
 			}
+			savesBlocked = false;
 			EasyEconomyMod.LOGGER.info("loaded {} accounts", core.snapshot().size());
 		} catch (Exception e) {
 			EasyEconomyMod.LOGGER.error("failed to load accounts, starting empty", e);
@@ -101,15 +105,22 @@ public final class EconomyService {
 						aside = accountsFile.resolveSibling(base + "-" + (n++));
 					}
 					Files.move(accountsFile, aside);
+					savesBlocked = false;
 					EasyEconomyMod.LOGGER.error("unreadable accounts file quarantined to {}", aside.getFileName());
 				}
 			} catch (Exception moveFailed) {
-				EasyEconomyMod.LOGGER.error("could not quarantine the unreadable accounts file; autosave may overwrite it", moveFailed);
+				savesBlocked = true;
+				EasyEconomyMod.LOGGER.error("could not quarantine the unreadable accounts file; saves are BLOCKED until a valid load succeeds", moveFailed);
 			}
 		}
 	}
 
 	public synchronized boolean save() {
+		if (savesBlocked) {
+			EasyEconomyMod.LOGGER.error("refusing to save accounts: an unreadable accounts file could not be"
+					+ " quarantined; fix or remove it and reload before saving can resume");
+			return false;
+		}
 		try {
 			Map<String, Long> raw = new HashMap<>();
 			for (Map.Entry<UUID, Long> e : core.snapshot().entrySet()) {

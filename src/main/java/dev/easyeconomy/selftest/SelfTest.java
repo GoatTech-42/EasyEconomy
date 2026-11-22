@@ -499,6 +499,27 @@ public final class SelfTest {
 				Files.writeString(accounts, good);
 				eco.load();
 				check("accounts restored after quarantine", bal(a) == balA && eco.core().snapshot().size() >= 2);
+
+				// if the quarantine rename itself fails, saves must fail
+				// closed so a later autosave cannot overwrite the unreadable
+				// original; a valid load re-enables them
+				String blocked = "{ still not json ";
+				Files.writeString(accounts, blocked);
+				var dirPerms = Files.getPosixFilePermissions(eco.dataDir());
+				try {
+					Files.setPosixFilePermissions(eco.dataDir(),
+							java.nio.file.attribute.PosixFilePermissions.fromString("r-xr-xr-x"));
+					eco.load();
+				} finally {
+					Files.setPosixFilePermissions(eco.dataDir(), dirPerms);
+				}
+				check("failed quarantine keeps original bytes",
+						Files.exists(accounts) && Files.readString(accounts).equals(blocked));
+				check("failed quarantine blocks save", !eco.save());
+				check("original bytes kept after blocked save", Files.readString(accounts).equals(blocked));
+				Files.writeString(accounts, good);
+				eco.load();
+				check("save re-enabled after valid load", eco.save());
 			} catch (Exception e) {
 				throw new IllegalStateException("hostile accounts stage failed", e);
 			}
