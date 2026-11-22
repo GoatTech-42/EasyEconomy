@@ -12,6 +12,8 @@ import dev.easyeconomy.economy.EconomyService;
 import dev.easyeconomy.currency.CurrencyItems;
 import dev.easyeconomy.currency.CurrencyMath;
 import dev.easyeconomy.EasyEconomyMod;
+import dev.easyeconomy.shop.ShopGui;
+import dev.easyeconomy.shop.ShopService;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -24,7 +26,7 @@ import net.minecraft.world.item.ItemStack;
 
 public final class EasyEconomyCommands {
 
-	public static void register(CommandDispatcher<CommandSourceStack> dispatcher, EconomyService eco) {
+	public static void register(CommandDispatcher<CommandSourceStack> dispatcher, EconomyService eco, ShopService shop) {
 		dispatcher.register(Commands.literal("balance")
 				.executes(ctx -> showBalance(ctx.getSource(), ctx.getSource().getPlayerOrException(), eco))
 				.then(balanceOtherChild(eco)));
@@ -56,6 +58,13 @@ public final class EasyEconomyCommands {
 				.executes(ctx -> depositHand(ctx.getSource(), eco))
 				.then(Commands.literal("all")
 						.executes(ctx -> depositAll(ctx.getSource(), eco))));
+		dispatcher.register(Commands.literal("shop")
+				.executes(ctx -> {
+					ShopGui.openRoot(ctx.getSource().getPlayerOrException(), shop, eco);
+					return 1;
+				}));
+		dispatcher.register(Commands.literal("sell")
+				.executes(ctx -> sell(ctx.getSource(), eco, shop)));
 		dispatcher.register(Commands.literal("easyeconomy")
 				.executes(ctx -> info(ctx.getSource(), eco))
 				.then(Commands.literal("reload")
@@ -201,6 +210,25 @@ public final class EasyEconomyCommands {
 		long deposited = total;
 		source.sendSuccess(() -> Component.literal("deposited " + eco.format(deposited)), false);
 		return 1;
+	}
+
+	private static int sell(CommandSourceStack source, EconomyService eco, ShopService shop) throws CommandSyntaxException {
+		ServerPlayer player = source.getPlayerOrException();
+		ItemStack held = player.getMainHandItem();
+		ShopService.SellOutcome outcome = shop.sell(player, held);
+		switch (outcome.result()) {
+			case OK -> {
+				player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+				source.sendSuccess(() -> Component.literal("sold " + outcome.count() + " for " + eco.format(outcome.value())), false);
+				return 1;
+			}
+			case NO_ITEM -> source.sendFailure(Component.literal("hold an item to sell it"));
+			case IS_CURRENCY -> source.sendFailure(Component.literal("that's currency - use /deposit"));
+			case NO_PRICE -> source.sendFailure(Component.literal("the server doesn't buy that"));
+			case OVER_MAX -> source.sendFailure(Component.literal("that would put you over the max balance"));
+			default -> source.sendFailure(Component.literal("can't sell that"));
+		}
+		return 0;
 	}
 
 	private enum AdminOp { GIVE, TAKE, SET }

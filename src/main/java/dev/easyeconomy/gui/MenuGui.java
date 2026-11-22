@@ -1,0 +1,97 @@
+package dev.easyeconomy.gui;
+
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.MenuProvider;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemLore;
+
+import java.util.List;
+
+// Lean chest-menu gui base. Clicks are intercepted and never reach the
+// container, so no item can move in or out through any input path
+// (pickup, shift, number key, offhand swap, drag). After each click the
+// menu is re-synced so the client drops any ghost items.
+public abstract class MenuGui {
+	protected final ServerPlayer player;
+	protected final SimpleContainer container;
+	protected final int rows;
+	private ChestMenu menu;
+
+	protected MenuGui(ServerPlayer player, int rows) {
+		this.player = player;
+		this.rows = Math.max(1, Math.min(6, rows));
+		this.container = new SimpleContainer(this.rows * 9);
+	}
+
+	public void open() {
+		MenuProvider provider = new SimpleMenuProvider((syncId, inv, p) -> {
+			menu = new ChestMenu(typeFor(rows), syncId, inv, container, rows) {
+				@Override
+				public void clicked(int slot, int button, ContainerInput input, Player clicker) {
+					onClick(slot, button, input);
+					broadcastChanges();
+				}
+
+				@Override
+				public void removed(Player closer) {
+					onClose();
+				}
+			};
+			return menu;
+		}, title());
+		player.openMenu(provider);
+	}
+
+	protected abstract Component title();
+
+	protected abstract void onClick(int slot, int button, ContainerInput input);
+
+	protected void onClose() {
+	}
+
+	protected void set(int slot, ItemStack stack) {
+		if (slot >= 0 && slot < container.getContainerSize()) {
+			container.setItem(slot, stack);
+		}
+	}
+
+	protected void refresh() {
+		if (menu != null) {
+			menu.broadcastChanges();
+		}
+	}
+
+	public static ItemStack display(Item item, String name, List<String> lore) {
+		ItemStack stack = new ItemStack(item);
+		stack.set(DataComponents.CUSTOM_NAME,
+				Component.literal(name).withStyle(style -> style.withItalic(false).withColor(ChatFormatting.WHITE)));
+		if (!lore.isEmpty()) {
+			stack.set(DataComponents.LORE, new ItemLore(lore.stream()
+					.map(line -> (Component) Component.literal(line)
+							.withStyle(style -> style.withItalic(false).withColor(ChatFormatting.GRAY)))
+					.toList()));
+		}
+		return stack;
+	}
+
+	private static MenuType<ChestMenu> typeFor(int rows) {
+		return switch (rows) {
+			case 1 -> MenuType.GENERIC_9x1;
+			case 2 -> MenuType.GENERIC_9x2;
+			case 3 -> MenuType.GENERIC_9x3;
+			case 4 -> MenuType.GENERIC_9x4;
+			case 5 -> MenuType.GENERIC_9x5;
+			default -> MenuType.GENERIC_9x6;
+		};
+	}
+}

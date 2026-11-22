@@ -5,6 +5,7 @@ import dev.easyeconomy.config.ConfigManager;
 import dev.easyeconomy.economy.EconomyService;
 import dev.easyeconomy.pack.PackBuilder;
 import dev.easyeconomy.pack.PackServer;
+import dev.easyeconomy.shop.ShopService;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -17,6 +18,7 @@ public final class EasyEconomyMod implements ModInitializer {
 	public static final Logger LOGGER = LoggerFactory.getLogger("EasyEconomy");
 
 	private static EconomyService economy;
+	private static ShopService shop;
 	private static final PackServer packServer = new PackServer();
 	private static PackBuilder.Built pack;
 
@@ -24,20 +26,32 @@ public final class EasyEconomyMod implements ModInitializer {
 	public void onInitialize() {
 		ConfigManager.load();
 		economy = new EconomyService(ConfigManager.get());
-		ServerLifecycleEvents.SERVER_STARTING.register(server -> economy.load());
+		shop = new ShopService(economy);
+		ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+			economy.load();
+			shop.load();
+		});
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> rebuildPack());
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			packServer.stop();
+			shop.saveLimits();
 			economy.save();
 		});
-		ServerTickEvents.END_SERVER_TICK.register(server -> economy.autosaveTick());
+		ServerTickEvents.END_SERVER_TICK.register(server -> {
+			economy.autosaveTick();
+			shop.autosaveTick();
+		});
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) ->
-				EasyEconomyCommands.register(dispatcher, economy));
+				EasyEconomyCommands.register(dispatcher, economy, shop));
 		LOGGER.info("easyeconomy loaded");
 	}
 
 	public static EconomyService economy() {
 		return economy;
+	}
+
+	public static ShopService shop() {
+		return shop;
 	}
 
 	public static PackBuilder.Built pack() {
@@ -46,6 +60,7 @@ public final class EasyEconomyMod implements ModInitializer {
 
 	public static void reloadAll() {
 		economy.reload();
+		shop.load();
 		rebuildPack();
 	}
 
