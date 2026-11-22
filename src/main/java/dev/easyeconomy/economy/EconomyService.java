@@ -61,11 +61,24 @@ public final class EconomyService {
 				Map<UUID, Long> data = new HashMap<>();
 				if (raw != null) {
 					for (Map.Entry<String, Long> e : raw.entrySet()) {
+						UUID id;
 						try {
-							data.put(UUID.fromString(e.getKey()), e.getValue());
+							id = UUID.fromString(e.getKey());
 						} catch (IllegalArgumentException bad) {
 							EasyEconomyMod.LOGGER.warn("skipping bad account id {}", e.getKey());
+							continue;
 						}
+						// one malformed row must never wipe the rest of the file
+						Long value = e.getValue();
+						if (value == null) {
+							EasyEconomyMod.LOGGER.warn("skipping account {} with no balance", id);
+							continue;
+						}
+						if (value < 0 || value > core.maxBalance()) {
+							EasyEconomyMod.LOGGER.warn("skipping account {} with out-of-range balance {}", id, value);
+							continue;
+						}
+						data.put(id, value);
 					}
 				}
 				core.loadAll(data);

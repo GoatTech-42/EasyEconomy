@@ -404,6 +404,37 @@ public final class SelfTest {
 				packs.stop();
 			}
 		});
+		stages.put(263, () -> {
+			// a malformed accounts.json row must be skipped, never wipe the
+			// whole file: bad ids, null balances, negatives and over-max
+			// values are dropped one by one with a warning
+			try {
+				EconomyService eco = EasyEconomyMod.economy();
+				check("accounts flush before hostile load", eco.save());
+				java.nio.file.Path accounts = eco.dataDir().resolve("accounts.json");
+				String good = Files.readString(accounts);
+				final long balA = bal(a);
+				final long balB = bal(b);
+				String hostile = "{\n"
+						+ "  \"" + a.getUUID() + "\": " + balA + ",\n"
+						+ "  \"" + b.getUUID() + "\": " + balB + ",\n"
+						+ "  \"not-a-uuid\": 5,\n"
+						+ "  \"" + UUID.randomUUID() + "\": null,\n"
+						+ "  \"" + UUID.randomUUID() + "\": -10,\n"
+						+ "  \"" + UUID.randomUUID() + "\": 999999999999999999\n"
+						+ "}\n";
+				Files.writeString(accounts, hostile);
+				eco.load();
+				check("hostile accounts: A intact", bal(a) == balA);
+				check("hostile accounts: B intact", bal(b) == balB);
+				check("hostile accounts: bad rows skipped", eco.core().snapshot().size() == 2);
+				Files.writeString(accounts, good);
+				eco.load();
+				check("accounts restored", eco.core().snapshot().size() >= 2 && bal(a) == balA);
+			} catch (Exception e) {
+				throw new IllegalStateException("hostile accounts stage failed", e);
+			}
+		});
 		stages.put(265, () -> {
 			EconomyService eco = EasyEconomyMod.economy();
 			check("accounts flush", eco.save());
