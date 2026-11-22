@@ -120,6 +120,7 @@ public final class PlayerShopGui extends MenuGui {
 			case OWN_LISTING -> player.sendSystemMessage(Component.literal("that's your listing - cancel it in my listings"));
 			case INSUFFICIENT_FUNDS -> player.sendSystemMessage(Component.literal("not enough " + dev.easyeconomy.config.ConfigManager.get().currencyPlural));
 			case SELLER_OVER_MAX -> player.sendSystemMessage(Component.literal("seller can't hold that much right now"));
+			case NO_ROOM -> player.sendSystemMessage(Component.literal("your inventory is full"));
 			case FAILED -> player.sendSystemMessage(Component.literal("sale failed safely - nothing was charged"));
 		}
 	}

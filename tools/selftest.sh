@@ -32,9 +32,13 @@ run_phase() {
   rm -f run/logs/latest.log
   setsid gradle runServer -PeeSelftest=$phase --no-daemon --console=plain -q > /tmp/easyeconomy-selftest-$phase.out 2>&1 &
   LEADER=$!
-  START=$(ps -o lstart= -p "$LEADER" 2>/dev/null || true)
-  local pgid
-  pgid=$(ps -o pgid= -p "$LEADER" 2>/dev/null | tr -d ' ' || true)
+  START=""; local pgid=""
+  for i in $(seq 1 10); do
+    START=$(ps -o lstart= -p "$LEADER" 2>/dev/null || true)
+    pgid=$(ps -o pgid= -p "$LEADER" 2>/dev/null | tr -d ' ' || true)
+    [ -n "$START" ] && [ -n "$pgid" ] && break
+    sleep 1
+  done
   echo "[$phase] leader pid=$LEADER pgid=$pgid start=$START"
   if [ "$pgid" != "$LEADER" ]; then
     echo "[$phase] FAIL: leader is not its own process group leader (pgid=$pgid), refusing to run"

@@ -8,8 +8,13 @@ cd "$(dirname "$0")/.."
 rm -f run/logs/latest.log
 setsid gradle runServer --no-daemon --console=plain -q > /tmp/easyeconomy-runserver.out 2>&1 &
 LEADER=$!
-START=$(ps -o lstart= -p "$LEADER" 2>/dev/null || true)
-PGID=$(ps -o pgid= -p "$LEADER" 2>/dev/null | tr -d ' ' || true)
+START=""; PGID=""
+for i in $(seq 1 10); do
+  START=$(ps -o lstart= -p "$LEADER" 2>/dev/null || true)
+  PGID=$(ps -o pgid= -p "$LEADER" 2>/dev/null | tr -d ' ' || true)
+  [ -n "$START" ] && [ -n "$PGID" ] && break
+  sleep 1
+done
 echo "launched leader pid=$LEADER pgid=$PGID start=$START"
 if [ "$PGID" != "$LEADER" ]; then
   echo "leader is not its own process group leader (pgid=$PGID), refusing to run"

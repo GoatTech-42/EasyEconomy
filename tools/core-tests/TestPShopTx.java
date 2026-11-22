@@ -33,8 +33,12 @@ public class TestPShopTx {
 		Map<UUID, String> handsDisk = new HashMap<>();
 		List<String> deliveries = new ArrayList<>();
 		List<String> deliveriesDisk = new ArrayList<>();
+		Map<UUID, Integer> invLoad = new HashMap<>();
+		Map<UUID, Integer> invLoadDisk = new HashMap<>();
+		int slotsCap = 1000;
 		List<String> logs = new ArrayList<>();
 		String journal;
+		boolean failPlayerSaves = false;
 		int step = 0;
 		int killAtStep = -1;
 		int failAtStep = -1;
@@ -103,6 +107,33 @@ public class TestPShopTx {
 			moneyDisk = new HashMap<>(balances);
 		}
 
+		// durable-or-rolled-back, like the production default: on flush
+		// failure the in-memory move is reversed directly (no checkpoints)
+		// so live balances never claim a payment the disk does not have
+		@Override
+		public MoneyResult moveMoneyDurable(UUID from, UUID to, long amount, String reason) {
+			MoneyMove moved = moveMoney(from, to, amount, reason);
+			if (moved == MoneyMove.INSUFFICIENT) {
+				return MoneyResult.INSUFFICIENT;
+			}
+			if (moved == MoneyMove.SELLER_FULL) {
+				return MoneyResult.SELLER_FULL;
+			}
+			try {
+				flushMoney();
+				return MoneyResult.OK;
+			} catch (TxException e) {
+				balances.put(from, balances.get(from) + amount);
+				balances.put(to, balances.get(to) - amount);
+				return MoneyResult.WRITE_FAILED;
+			}
+		}
+
+		@Override
+		public long balanceOf(UUID player) {
+			return balances.getOrDefault(player, 0L);
+		}
+
 		@Override
 		public void journalWrite(String content) throws TxException {
 			checkpoint();
@@ -124,6 +155,11 @@ public class TestPShopTx {
 		}
 
 		@Override
+		public boolean canFit(UUID player, String listingJson) {
+			return invLoad.getOrDefault(player, 0) < slotsCap;
+		}
+
+		@Override
 		public void takeHeldFromSeller(UUID seller) {
 			checkpoint();
 			hands.remove(seller);
@@ -139,26 +175,21 @@ public class TestPShopTx {
 		public void deliverItem(UUID player, String listingJson) {
 			checkpoint();
 			deliveries.add(listingJson);
+			invLoad.merge(player, 1, Integer::sum);
 		}
 
+		// vanilla's save swallows failures; the fault flag models exactly
+		// that: the call returns without anything reaching disk
 		@Override
-		public void takeItem(UUID player, String listingJson) {
+		public boolean savePlayer(UUID player) {
 			checkpoint();
-			deliveries.remove(listingJson);
-		}
-
-		@Override
-		public long balanceOf(UUID player) {
-			return balances.getOrDefault(player, 0L);
-		}
-
-		@Override
-		public void savePlayer(UUID player) {
-			checkpoint();
-			// the forced save makes the whole world snapshot durable, like
-			// vanilla's PlayerList.saveAll persists every player's data
+			if (failPlayerSaves) {
+				return false;
+			}
 			handsDisk = new HashMap<>(hands);
 			deliveriesDisk = new ArrayList<>(deliveries);
+			invLoadDisk = new HashMap<>(invLoad);
+			return true;
 		}
 
 		@Override
@@ -185,7 +216,10 @@ public class TestPShopTx {
 			next.handsDisk = new HashMap<>(handsDisk);
 			next.deliveries = new ArrayList<>(deliveriesDisk);
 			next.deliveriesDisk = new ArrayList<>(deliveriesDisk);
+			next.invLoad = new HashMap<>(invLoadDisk);
+			next.invLoadDisk = new HashMap<>(invLoadDisk);
 			next.logs = logs;
+			next.slotsCap = slotsCap;
 			return next;
 		}
 
@@ -220,7 +254,7 @@ public class TestPShopTx {
 		}
 	}
 
-	public static void main(String[] args) {
+	public static void main(String[] args) throws Exception {
 		UUID seller = UUID.randomUUID();
 		UUID buyer = UUID.randomUUID();
 		UUID listingId = UUID.randomUUID();
@@ -275,7 +309,7 @@ public class TestPShopTx {
 		}
 
 		// buy steps: [journalWrite, moveMoney, flushMoney, mark money_moved,
-		//   escrowRemove, mark listing_removed, deliver, mark delivering,
+		//   escrowRemove, mark listing_removed, mark delivering, deliver,
 		//   savePlayer, clear]
 		long[][] buyExpect = {
 				// buyer, seller, copies, escrowHas
@@ -286,9 +320,9 @@ public class TestPShopTx {
 				{100, 0, 1, 1}, // ks4: money_moved marked: refund
 				{100, 0, 0, 0}, // ks5: escrow removed: refund, item lost
 				{100, 0, 0, 0}, // ks6: listing_removed marked: refund, lost
-				{100, 0, 0, 0}, // ks7: delivered in memory, rolled back: refund
-				{70, 30, 0, 0},  // ks8: delivering marked: treated delivered, item lost
-				{70, 30, 1, 0},  // ks9: delivery saved
+				{70, 30, 0, 0}, // ks7: delivering marked pre-delivery: paid, item lost
+				{70, 30, 0, 0}, // ks8: delivered in memory, rolled back: treated delivered
+				{70, 30, 1, 0}, // ks9: delivery saved
 				{70, 30, 1, 0}}; // ks10: complete
 		for (int ks = 0; ks <= 10; ks++) {
 			MockStore s = buySetup(buyer, seller, listingId, item);
@@ -307,7 +341,7 @@ public class TestPShopTx {
 		}
 
 		// cancel steps: [journalWrite, escrowRemove, mark listing_removed,
-		//   deliver, mark delivering, savePlayer, clear]
+		//   mark delivering, deliver, savePlayer, clear]
 		long[][] cancelExpect = {{1, 1}, {1, 1}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {1, 0}, {1, 0}};
 		for (int ks = 0; ks <= 7; ks++) {
 			MockStore s = new MockStore();
@@ -325,25 +359,17 @@ public class TestPShopTx {
 		}
 
 		// ---- recovery crashing mid-refund: strict oracle ----
-		// crash the first buy after the money_moved mark (escrow intact),
-		// then crash the recovery itself at each of its steps:
-		// [moveMoney, flushMoney, journalClear]. However often recovery is
-		// interrupted, the final state must be the exact promised refund:
-		// buyer back at 100, seller at 0, the item still in escrow.
+		// recovery refund steps: [moveMoney, flushMoney, journalClear].
+		// However often recovery is interrupted, the final state must be the
+		// exact promised refund.
 		for (int ks2 = 0; ks2 <= 3; ks2++) {
-			MockStore s = buySetup(buyer, seller, listingId, item);
-			s.killAtStep = 4; // crash after money_moved mark: refund path
+			MockStore s = paidInterrupted(buyer, seller, listingId, item);
+			s.killAtStep = ks2;
 			try {
-				TxOps.buy(s, listingId, seller, buyer, price, item);
+				TxOps.recover(s);
 			} catch (Crash ignored) {
 			}
-			MockStore w = s.afterCrash();
-			w.killAtStep = ks2; // crash the recovery itself
-			try {
-				TxOps.recover(w);
-			} catch (Crash ignored) {
-			}
-			MockStore w2 = w.afterCrash();
+			MockStore w2 = s.afterCrash();
 			TxOps.recover(w2);
 			check("double recovery ks2=" + ks2 + " conserved", w2.totalMoney() == 100);
 			check("double recovery ks2=" + ks2 + " exact refund",
@@ -351,6 +377,46 @@ public class TestPShopTx {
 			check("double recovery ks2=" + ks2 + " item in escrow",
 					w2.itemCopies(item) == 1 && w2.escrowHas(listingId));
 			check("double recovery ks2=" + ks2 + " journal closed", w2.journal == null);
+		}
+
+		// ---- refund flush failure + same-process retry (QA round 3) ----
+		// the refund moves in memory, the flush fails: the memory move must
+		// roll back, the journal must stay, and a same-process retry must
+		// then refund exactly once
+		{
+			MockStore w = paidInterrupted(buyer, seller, listingId, item);
+			w.failAtStep = 1; // recovery's flushMoney
+			TxOps.recover(w);
+			check("failed refund: journal kept", w.journal != null);
+			check("failed refund: memory rolled back",
+					w.balances.get(buyer) == 70 && w.balances.get(seller) == 30);
+			w.failAtStep = -1;
+			TxOps.recover(w); // same process, no restart
+			check("same-process retry refunds",
+					w.balances.get(buyer) == 100 && w.balances.get(seller) == 0);
+			check("same-process retry closes journal", w.journal == null);
+			MockStore w2 = w.afterCrash();
+			TxOps.recover(w2);
+			check("retry result survives restart",
+					w2.balances.get(buyer) == 100 && w2.balances.get(seller) == 0 && w2.journal == null);
+		}
+
+		// ---- seller spends the payment before recovery (QA round 3) ----
+		{
+			MockStore w = paidInterrupted(buyer, seller, listingId, item);
+			UUID third = UUID.randomUUID();
+			w.moveMoney(seller, third, 30, "ordinary-pay");
+			w.flushMoney();
+			TxOps.recover(w);
+			check("spent proceeds: refund refused", w.balances.get(buyer) == 70);
+			check("spent proceeds: journal kept", w.journal != null);
+			check("spent proceeds: admin notified", w.logs.stream().anyMatch(l -> l.contains("cannot cover the refund")));
+			w.moveMoney(third, seller, 30, "seller re-funded");
+			w.flushMoney();
+			TxOps.recover(w);
+			check("spent proceeds: late refund lands",
+					w.balances.get(buyer) == 100 && w.balances.get(seller) == 0);
+			check("spent proceeds: journal closed", w.journal == null);
 		}
 
 		// ---- write failure aborts ----
@@ -372,8 +438,8 @@ public class TestPShopTx {
 		check("buy fail remove refunded", f3.balances.get(buyer) == 100 && f3.balances.get(seller) == 0);
 		check("buy fail remove state", f3.escrowHas(listingId) && f3.itemCopies(item) == 1 && f3.journal == null);
 
-		// list abort: the QA blocker. the real EscrowStore must roll back, the
-		// item goes back to the seller, and no listing survives in memory
+		// list abort: the real EscrowStore must roll back, the item goes
+		// back to the seller, and no listing survives in memory
 		MockStore f4 = new MockStore();
 		f4.hands.put(seller, item);
 		f4.handsDisk.put(seller, item);
@@ -383,7 +449,6 @@ public class TestPShopTx {
 		check("list fail put: no live listing", !f4.escrowHas(listingId));
 		check("list fail put: nothing on disk", f4.escrowDisk.isEmpty());
 		check("list fail put: journal closed", f4.journal == null);
-		// and a crash right after that abort still finds exactly one item
 		MockStore f4w = f4.afterCrash();
 		TxOps.recover(f4w);
 		check("list abort + crash: copies", f4w.itemCopies(item) == 1);
@@ -396,40 +461,81 @@ public class TestPShopTx {
 		check("cancel fail remove state", f5.escrowHas(listingId) && f5.itemCopies(item) == 1 && f5.journal == null);
 
 		// buy: the listing_removed mark fails after the escrow removal is
-		// durable. No delivery may happen; recovery refunds from ground truth.
+		// durable. The payment is reversed inline and durably, nothing is
+		// delivered, and the journal closes because nothing is owed.
 		MockStore f6 = buySetup(buyer, seller, listingId, item);
 		f6.failAtStep = 5; // journalWrite(mark listing_removed)
 		check("buy fail lr-mark", TxOps.buy(f6, listingId, seller, buyer, price, item) == TxOps.Outcome.ABORTED_WRITE_FAILED);
 		check("buy fail lr-mark: not delivered", f6.deliveries.isEmpty());
-		check("buy fail lr-mark: journal kept", f6.journal != null);
+		check("buy fail lr-mark: payment reversed", f6.balances.get(buyer) == 100 && f6.balances.get(seller) == 0);
+		check("buy fail lr-mark: item lost exactly once", f6.itemCopies(item) == 0 && !f6.escrowHas(listingId));
+		check("buy fail lr-mark: journal closed", f6.journal == null);
 		MockStore f6w = f6.afterCrash();
 		TxOps.recover(f6w);
-		check("buy fail lr-mark: recovered refund", f6w.balances.get(buyer) == 100 && f6w.balances.get(seller) == 0);
-		check("buy fail lr-mark: item lost exactly once", f6w.itemCopies(item) == 0 && !f6w.escrowHas(listingId));
-		check("buy fail lr-mark: journal closed", f6w.journal == null);
+		check("buy fail lr-mark: stable after restart", f6w.balances.get(buyer) == 100 && f6w.journal == null);
 
-		// buy: the delivering mark fails after the in-memory delivery. The
-		// item must be recalled so a later autosave cannot dupe it against
-		// the recovery refund.
+		// buy: the delivering mark fails BEFORE delivery. Nothing is ever
+		// handed out, so the recovery refund cannot meet an item.
 		MockStore f7 = buySetup(buyer, seller, listingId, item);
-		f7.failAtStep = 7; // journalWrite(mark delivering)
+		f7.failAtStep = 6; // journalWrite(mark delivering)
 		check("buy fail dlv-mark", TxOps.buy(f7, listingId, seller, buyer, price, item) == TxOps.Outcome.ABORTED_WRITE_FAILED);
-		check("buy fail dlv-mark: item recalled", f7.deliveries.isEmpty());
+		check("buy fail dlv-mark: never delivered", f7.deliveries.isEmpty());
+		check("buy fail dlv-mark: journal kept", f7.journal != null);
 		MockStore f7w = f7.afterCrash();
 		TxOps.recover(f7w);
 		check("buy fail dlv-mark: recovered refund", f7w.balances.get(buyer) == 100 && f7w.balances.get(seller) == 0);
 		check("buy fail dlv-mark: no dupe", f7w.itemCopies(item) == 0);
+		check("buy fail dlv-mark: journal closed", f7w.journal == null);
+
+		// ---- silent player-save failure (QA round 3) ----
+		// vanilla's save returns normally without persisting; the verified
+		// save must catch that and stop the trade before the other side
+		// reaches disk
+		{
+			MockStore w = new MockStore();
+			w.hands.put(seller, item);
+			w.handsDisk.put(seller, item);
+			w.failPlayerSaves = true;
+			check("save fault: list aborts", TxOps.list(w, listingId, seller, price, item) == TxOps.Outcome.ABORTED_WRITE_FAILED);
+			check("save fault: escrow untouched", !w.escrowHas(listingId) && w.escrowDisk.isEmpty());
+			check("save fault: journal closed", w.journal == null);
+			MockStore w2 = w.afterCrash();
+			TxOps.recover(w2);
+			check("save fault: exactly one copy after restart", w2.itemCopies(item) == 1);
+			check("save fault: copy is the seller's", w2.hands.get(seller) != null);
+		}
+		{
+			// buy delivery save unverified: the delivering mark is durable,
+			// so the trade counts as delivered; a crash loses the item, and
+			// the log says so. Never a dupe, never a refund-meets-item.
+			MockStore w = buySetup(buyer, seller, listingId, item);
+			w.failPlayerSaves = true;
+			check("save fault: buy completes loss-biased", TxOps.buy(w, listingId, seller, buyer, price, item) == TxOps.Outcome.OK);
+			check("save fault: buy logged", w.logs.stream().anyMatch(l -> l.contains("delivery save unverified")));
+			MockStore w2 = w.afterCrash();
+			TxOps.recover(w2);
+			check("save fault: buy paid, item lost, no dupe",
+					w2.balances.get(buyer) == 70 && w2.balances.get(seller) == 30 && w2.itemCopies(item) == 0);
+			check("save fault: buy journal closed", w2.journal == null);
+		}
+
+		// ---- full inventory refused before anything moves ----
+		{
+			MockStore w = buySetup(buyer, seller, listingId, item);
+			w.slotsCap = 1;
+			w.invLoad.put(buyer, 1); // every slot taken
+			check("full inventory refused", TxOps.buy(w, listingId, seller, buyer, price, item) == TxOps.Outcome.NO_ROOM);
+			check("full inventory: nothing moved", w.balances.get(buyer) == 100 && w.escrowHas(listingId)
+					&& w.itemCopies(item) == 1 && w.journal == null);
+		}
 
 		// ---- pending-transaction gate ----
-		// an unreadable journal blocks new operations entirely
 		MockStore g1 = buySetup(buyer, seller, listingId, item);
 		g1.journal = "this is not\na valid journal";
 		check("gate: junk journal blocks", TxOps.buy(g1, listingId, seller, buyer, price, item) == TxOps.Outcome.ABORTED_WRITE_FAILED);
 		check("gate: junk journal kept", g1.journal != null);
 		check("gate: junk journal untouched", g1.balances.get(buyer) == 100 && g1.itemCopies(item) == 1);
 
-		// a leftover crashed-buy journal is recovered by the next operation,
-		// which then proceeds normally
 		MockStore g2pre = buySetup(buyer, seller, listingId, item);
 		g2pre.killAtStep = 4; // crash after money_moved mark
 		try {
@@ -490,5 +596,18 @@ public class TestPShopTx {
 		s.store.loadAll(List.of(item), TestPShopTx::listingId);
 		s.escrowDisk.put(listingId, item);
 		return s;
+	}
+
+	// the world after a buy crashed right after the money_moved mark: the
+	// payment is durable, the listing is still in escrow, the journal says
+	// money_moved
+	private static MockStore paidInterrupted(UUID buyer, UUID seller, UUID listingId, String item) {
+		MockStore s = buySetup(buyer, seller, listingId, item);
+		s.killAtStep = 4;
+		try {
+			TxOps.buy(s, listingId, seller, buyer, 30, item);
+		} catch (Crash ignored) {
+		}
+		return s.afterCrash();
 	}
 }

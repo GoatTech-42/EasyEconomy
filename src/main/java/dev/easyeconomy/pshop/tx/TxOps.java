@@ -7,22 +7,23 @@ import java.util.UUID;
 // Recoverable transactions for the player shop. One transaction at a time
 // (callers synchronize). A one-field-per-line journal records the intent,
 // including both balances before a buy, and marks for each durable step.
-// On startup, and before every new operation, recover() finishes or
-// unwinds whatever was in flight.
 //
 // Crash rule: never create value during recovery. Recovery decides from
-// ground truth (the durable balance, the escrow contents), never from
-// journal marks alone: a crash can leave any mark unwritten, so a mark can
-// only say "this may have happened". A half-finished delivery is reported
-// and dropped (the item is lost), a half-finished payment is refunded.
-// Losing one item to a mid-write crash is acceptable; duping is not.
+// ground truth (the durable balance, the escrow contents), and every money
+// move is durable-or-rolled-back, so a balance always tells the truth
+// about what happened. Delivery happens only AFTER the delivering mark is
+// durable: a refund therefore can never meet an item that was handed out,
+// because an unmarked delivery does not exist. The price is a narrow
+// window (crash between the delivering mark and the inventory save) where
+// a paid item is lost; that is logged. Losing one item to a mid-write
+// crash is acceptable; duping is not.
 //
 // Journal format, one field per line (listing json is single-line):
 //   op / listingId / seller / buyer (- when none) / price /
 //   buyerBefore (- when none) / sellerBefore (- when none) /
 //   steps csv / listingJson
 public final class TxOps {
-	public enum Outcome { OK, INSUFFICIENT, SELLER_FULL, ABORTED_WRITE_FAILED }
+	public enum Outcome { OK, INSUFFICIENT, SELLER_FULL, NO_ROOM, ABORTED_WRITE_FAILED }
 
 	public static final String OP_LIST = "list";
 	public static final String OP_BUY = "buy";
@@ -52,16 +53,22 @@ public final class TxOps {
 			return Outcome.ABORTED_WRITE_FAILED;
 		}
 		s.takeHeldFromSeller(seller);
-		// make the hand-clear durable before the listing reaches disk, so a
-		// crash cannot roll the inventory back and resurrect the item
-		s.savePlayer(seller);
+		// the empty hand must be verifiably on disk before the listing may
+		// reach disk, or a crash could roll the hand back and dupe the item
+		if (!s.savePlayer(seller)) {
+			s.giveItem(seller, listingJson);
+			s.savePlayer(seller);
+			clearQuietly(s);
+			s.error("pshop list aborted: player save could not be verified, item returned");
+			return Outcome.ABORTED_WRITE_FAILED;
+		}
 		try {
 			s.escrowPutPersist(listingJson);
 		} catch (TxException e) {
 			s.giveItem(seller, listingJson);
-			// the empty hand was made durable above; make the return durable
-			// too, or a crash would roll the world back to no item at all
-			s.savePlayer(seller);
+			if (!s.savePlayer(seller)) {
+				s.error("pshop list abort: item returned in memory but the save is unverified; a crash may lose it");
+			}
 			clearQuietly(s);
 			s.error("pshop list aborted: listing save failed, item returned");
 			return Outcome.ABORTED_WRITE_FAILED;
@@ -74,6 +81,9 @@ public final class TxOps {
 		if (!gate(s)) {
 			return Outcome.ABORTED_WRITE_FAILED;
 		}
+		if (!s.canFit(buyer, listingJson)) {
+			return Outcome.NO_ROOM;
+		}
 		long buyerBefore = s.balanceOf(buyer);
 		long sellerBefore = s.balanceOf(seller);
 		Entry tx = new Entry(OP_BUY, id, seller, buyer, price, buyerBefore, sellerBefore, new LinkedHashSet<>(), listingJson);
@@ -83,50 +93,51 @@ public final class TxOps {
 			s.error("pshop buy aborted: journal write failed, nothing moved");
 			return Outcome.ABORTED_WRITE_FAILED;
 		}
-		TxStore.MoneyMove moved = s.moveMoney(buyer, seller, price, "pshop-buy:" + id);
-		if (moved != TxStore.MoneyMove.OK) {
-			clearQuietly(s);
-			return moved == TxStore.MoneyMove.INSUFFICIENT ? Outcome.INSUFFICIENT : Outcome.SELLER_FULL;
+		switch (s.moveMoneyDurable(buyer, seller, price, "pshop-buy:" + id)) {
+			case OK -> {
+			}
+			case INSUFFICIENT -> {
+				clearQuietly(s);
+				return Outcome.INSUFFICIENT;
+			}
+			case SELLER_FULL -> {
+				clearQuietly(s);
+				return Outcome.SELLER_FULL;
+			}
+			default -> {
+				clearQuietly(s);
+				s.error("pshop buy aborted: money flush failed, nothing moved");
+				return Outcome.ABORTED_WRITE_FAILED;
+			}
 		}
 		try {
-			s.flushMoney();
 			mark(s, tx, STEP_MONEY_MOVED);
-		} catch (TxException e) {
-			unwindMoney(s, tx);
-			clearQuietly(s);
-			s.error("pshop buy aborted: money flush failed, payment reversed");
-			return Outcome.ABORTED_WRITE_FAILED;
-		}
-		try {
 			s.escrowRemovePersist(id, listingJson);
-		} catch (TxException e) {
-			unwindMoney(s, tx);
-			clearQuietly(s);
-			s.error("pshop buy aborted: listing save failed, payment reversed");
-			return Outcome.ABORTED_WRITE_FAILED;
-		}
-		try {
 			mark(s, tx, STEP_LISTING_REMOVED);
 		} catch (TxException e) {
-			// The listing is durably gone but the journal does not say so.
-			// Do NOT deliver: recovery will refund the buyer, and delivering
-			// here plus that refund would create value. Item is lost, logged.
-			s.error("pshop buy aborted after escrow removal; item dropped, buyer refunded on next start");
+			// the payment is durable; reverse it the same durable way. If
+			// even that fails, keep the journal: recovery will refund from
+			// ground truth on the next start or operation.
+			if (unwindMoney(s, tx)) {
+				clearQuietly(s);
+			}
+			s.error("pshop buy aborted mid-trade; payment reversed");
 			return Outcome.ABORTED_WRITE_FAILED;
 		}
-		s.deliverItem(buyer, listingJson);
 		try {
 			mark(s, tx, STEP_DELIVERING);
 		} catch (TxException e) {
-			// The journal cannot prove delivery started. Take the item back
-			// and let recovery refund the buyer; the item is lost either
-			// way, a dupe is not.
-			s.takeItem(buyer, listingJson);
-			s.savePlayer(buyer);
-			s.error("pshop buy aborted: delivery mark failed, item recalled, buyer refunded on next start");
+			// nothing delivered yet, and nothing will be: without the mark,
+			// recovery refunds. The item is lost with the escrow removal.
+			s.error("pshop buy aborted: delivery mark failed before delivery; buyer refunded on next start");
 			return Outcome.ABORTED_WRITE_FAILED;
 		}
-		s.savePlayer(buyer);
+		s.deliverItem(buyer, listingJson);
+		if (!s.savePlayer(buyer)) {
+			// the delivering mark is durable, so this trade counts as
+			// delivered; a crash now can lose the item. Loss-biased, logged.
+			s.error("pshop buy: delivery save unverified for " + buyer + "; a crash now may lose the item (already logged as delivered)");
+		}
 		clearQuietly(s);
 		return Outcome.OK;
 	}
@@ -149,26 +160,19 @@ public final class TxOps {
 			s.error("pshop cancel aborted: listing save failed, listing kept");
 			return Outcome.ABORTED_WRITE_FAILED;
 		}
-		// A cancel moves no money, so a missing journal mark cannot turn
-		// into a refund dupe: the item goes back to its owner either way.
-		// Mark failures degrade to warnings; delivery still happens once.
-		boolean delivered = false;
+		// a cancel moves no money, so a missing mark cannot turn into a
+		// refund dupe: the item goes back to its owner either way. Mark
+		// failures degrade to warnings.
 		try {
 			mark(s, tx, STEP_LISTING_REMOVED);
+			mark(s, tx, STEP_DELIVERING);
 		} catch (TxException e) {
 			s.warn("pshop cancel journal mark failed; delivering anyway");
 		}
 		s.deliverItem(seller, listingJson);
-		delivered = true;
-		try {
-			mark(s, tx, STEP_DELIVERING);
-		} catch (TxException e) {
-			s.warn("pshop cancel delivery mark failed; item already returned");
+		if (!s.savePlayer(seller)) {
+			s.warn("pshop cancel: return save unverified for " + seller + "; a crash now may lose the returned item");
 		}
-		if (!delivered) {
-			s.error("pshop cancel: unreachable state, item not returned: " + tx.id());
-		}
-		s.savePlayer(seller);
 		clearQuietly(s);
 		return Outcome.OK;
 	}
@@ -191,11 +195,10 @@ public final class TxOps {
 		return true;
 	}
 
-	// Applies whatever the journal proves is needed, decided from ground
-	// truth: the durable balances and the escrow contents. Idempotent - a
-	// crash during recovery leaves a state the next recovery reads the
-	// same way (a refunded buy shows the buyer back at buyerBefore, which
-	// reads as "money not moved" and just clears).
+	// Applies whatever ground truth proves is needed. Idempotent: a crash
+	// during recovery leaves a state the next recovery reads the same way,
+	// because a refund is durable-or-rolled-back - a half-refund cannot
+	// exist, so a refunded buy reads exactly as "money not moved".
 	public static void recover(TxStore s) {
 		String raw = s.journalRead();
 		if (raw == null) {
@@ -239,7 +242,7 @@ public final class TxOps {
 		if (buyerNow == tx.buyerBefore() - tx.price()) {
 			moneyMoved = true;
 		} else if (buyerNow == tx.buyerBefore()) {
-			moneyMoved = false; // never paid, or already refunded
+			moneyMoved = false; // never paid, or already durably refunded
 		} else {
 			s.error("pshop journal balance does not match intent (buyer " + tx.buyer()
 					+ " expected " + tx.buyerBefore() + " or " + (tx.buyerBefore() - tx.price())
@@ -252,38 +255,41 @@ public final class TxOps {
 		}
 		boolean escrowHas = s.escrowHas(tx.id());
 		if (tx.steps().contains(STEP_DELIVERING) && !escrowHas) {
-			// delivery started and the listing is gone; treat as delivered.
-			// If the crash hit before the inventory save, the item is lost -
-			// refunding instead could dupe an item that did make it to disk.
+			// delivery was marked before it started; treat as delivered. If
+			// the crash hit before the inventory save, the item is lost -
+			// refunding instead could dupe an item that did make it out.
 			s.warn("pshop crash recovery: buy " + tx.id() + " marked delivering; treated as delivered");
 			clearQuietly(s);
 			return;
 		}
-		// paid but not delivered: refund from ground truth. If the listing
-		// is gone, the item is lost; if it is still in escrow the trade
-		// simply unwinds.
+		// paid but not delivered: refund, durably or not at all. The journal
+		// stays until the refund is actually on disk - including when the
+		// seller can no longer cover it, which needs an admin.
 		if (!escrowHas) {
 			s.error("pshop crash recovery: buy " + tx.id()
 					+ " paid and escrow removed before delivery; refunding, the item is lost");
 		}
-		s.moveMoney(tx.seller(), tx.buyer(), tx.price(), "pshop-recovery-refund:" + tx.id());
-		try {
-			s.flushMoney();
-		} catch (TxException e) {
-			s.error("pshop recovery refund could not be flushed; journal kept for next start");
-			return;
+		TxStore.MoneyResult refund = s.moveMoneyDurable(tx.seller(), tx.buyer(), tx.price(), "pshop-recovery-refund:" + tx.id());
+		switch (refund) {
+			case OK -> {
+				s.warn("pshop crash recovery: refunded buyer for interrupted buy " + tx.id());
+				clearQuietly(s);
+			}
+			case INSUFFICIENT -> s.error("pshop crash recovery: seller " + tx.seller()
+					+ " cannot cover the refund for " + tx.id() + "; journal kept, needs an admin");
+			default -> s.error("pshop recovery refund could not be flushed; journal kept for next start");
 		}
-		s.warn("pshop crash recovery: refunded buyer for interrupted buy " + tx.id());
-		clearQuietly(s);
 	}
 
-	private static void unwindMoney(TxStore s, Entry tx) {
-		s.moveMoney(tx.seller(), tx.buyer(), tx.price(), "pshop-unwind:" + tx.id());
-		try {
-			s.flushMoney();
-		} catch (TxException e2) {
-			s.error("pshop unwind could not be flushed; balances need admin review");
+	// Reverse a durable payment, durably. Returns false (journal kept) when
+	// the reversal itself could not be committed; recovery will pick it up.
+	private static boolean unwindMoney(TxStore s, Entry tx) {
+		if (s.moveMoneyDurable(tx.seller(), tx.buyer(), tx.price(), "pshop-unwind:" + tx.id())
+				!= TxStore.MoneyResult.OK) {
+			s.error("pshop unwind could not be committed; journal kept, recovery will refund");
+			return false;
 		}
+		return true;
 	}
 
 	// ---------- journal codec ----------

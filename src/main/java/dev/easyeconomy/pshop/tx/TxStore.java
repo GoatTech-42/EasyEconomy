@@ -9,6 +9,12 @@ import java.util.UUID;
 public interface TxStore {
 	enum MoneyMove { OK, INSUFFICIENT, SELLER_FULL }
 
+	// Result of an atomic move+flush. On anything but OK the live and the
+	// durable state are both exactly as before the call: the in-memory move
+	// is rolled back when the flush fails, so live balances can never claim
+	// a payment the disk does not have.
+	enum MoneyResult { OK, INSUFFICIENT, SELLER_FULL, WRITE_FAILED }
+
 	// escrow listing store
 	boolean escrowHas(UUID id);
 
@@ -18,15 +24,34 @@ public interface TxStore {
 	// must restore the map entry so memory and disk stay consistent.
 	void escrowRemovePersist(UUID id, String listingJson) throws TxException;
 
-	// current balance as recovery will read it (loaded from disk at startup)
-	long balanceOf(UUID player);
-
-	// money: move from -> to atomically in memory. INSUFFICIENT means the
-	// sender could not pay and nothing moved. SELLER_FULL means the sender
-	// was debited and immediately refunded, so nothing moved either way.
+	// money primitives (kept separate so tests can crash between them)
 	MoneyMove moveMoney(UUID from, UUID to, long amount, String reason);
 
 	void flushMoney() throws TxException;
+
+	// current balance, as loaded from disk at startup. Recovery reads this
+	// only at startup or before a new operation, when live == durable.
+	long balanceOf(UUID player);
+
+	// Atomic move + durable flush. Default composition of the primitives:
+	// any failure restores the in-memory balances, so memory never diverges
+	// from disk.
+	default MoneyResult moveMoneyDurable(UUID from, UUID to, long amount, String reason) {
+		MoneyMove moved = moveMoney(from, to, amount, reason);
+		if (moved == MoneyMove.INSUFFICIENT) {
+			return MoneyResult.INSUFFICIENT;
+		}
+		if (moved == MoneyMove.SELLER_FULL) {
+			return MoneyResult.SELLER_FULL;
+		}
+		try {
+			flushMoney();
+			return MoneyResult.OK;
+		} catch (TxException e) {
+			moveMoney(to, from, amount, reason + ":rollback");
+			return MoneyResult.WRITE_FAILED;
+		}
+	}
 
 	// journal: full rewrite, durable. journalRead returns null when absent.
 	void journalWrite(String content) throws TxException;
@@ -35,22 +60,21 @@ public interface TxStore {
 
 	void journalClear();
 
-	// world effects (never durable, always last in a transaction)
-	void takeHeldFromSeller(UUID seller);
+	// can the player's inventory take this listing's whole stack right now
+	boolean canFit(UUID player, String listingJson);
+
+	// world effects (always after their journal marks are durable)
+	void takeHeldFromSeller(UUID player);
 
 	void giveItem(UUID player, String listingJson);
 
 	void deliverItem(UUID player, String listingJson);
 
-	// Take back a previously delivered item (memory effect). Used when the
-	// journal cannot record that delivery started, so recovery will refund.
-	void takeItem(UUID player, String listingJson);
-
-	// Force the player's saved data to disk. Vanilla saves inventories on
-	// its own schedule; without this a crash can roll a hand-clear or a
-	// delivery back and turn it into a dupe or an unexplained loss.
-	// Best-effort: implementations log and continue on failure.
-	void savePlayer(UUID player);
+	// Force the player's saved data to disk AND verify it by reading the
+	// saved file back: vanilla's PlayerDataStorage.save swallows write
+	// failures and returns normally, so a void call cannot prove anything.
+	// Returns true only when the on-disk inventory matches the live one.
+	boolean savePlayer(UUID player);
 
 	void warn(String msg);
 

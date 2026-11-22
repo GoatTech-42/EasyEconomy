@@ -39,7 +39,7 @@ import java.util.UUID;
 public final class PlayerShopService implements TxStore {
 	public enum ListResult { OK, NO_ITEM, IS_CURRENCY, BAD_PRICE, TOO_MANY, FAILED }
 
-	public enum BuyResult { OK, NOT_FOUND, OWN_LISTING, INSUFFICIENT_FUNDS, SELLER_OVER_MAX, FAILED }
+	public enum BuyResult { OK, NOT_FOUND, OWN_LISTING, INSUFFICIENT_FUNDS, SELLER_OVER_MAX, NO_ROOM, FAILED }
 
 	private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
@@ -116,6 +116,7 @@ public final class PlayerShopService implements TxStore {
 			case OK -> BuyResult.OK;
 			case INSUFFICIENT -> BuyResult.INSUFFICIENT_FUNDS;
 			case SELLER_FULL -> BuyResult.SELLER_OVER_MAX;
+			case NO_ROOM -> BuyResult.NO_ROOM;
 			default -> BuyResult.FAILED;
 		};
 	}
@@ -228,38 +229,38 @@ public final class PlayerShopService implements TxStore {
 	}
 
 	@Override
-	public void takeItem(UUID playerId, String listingJson) {
+	public boolean canFit(UUID playerId, String listingJson) {
 		ServerPlayer player = server.getPlayerList().getPlayer(playerId);
 		if (player == null) {
-			return;
+			return false;
 		}
 		try {
 			ItemStack wanted = fromJson(JsonParser.parseString(listingJson).getAsJsonObject()).stack(ops());
+			int max = wanted.getMaxStackSize();
+			long room = 0;
 			for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
 				ItemStack slot = player.getInventory().getItem(i);
-				if (!slot.isEmpty() && ItemStack.isSameItemSameComponents(slot, wanted)) {
-					slot.shrink(wanted.getCount());
-					player.getInventory().setItem(i, slot);
-					return;
+				if (slot.isEmpty()) {
+					room += max;
+				} else if (ItemStack.isSameItemSameComponents(slot, wanted)) {
+					room += max - slot.getCount();
 				}
 			}
-			EasyEconomyMod.LOGGER.error("pshop recall could not find the delivered item for {}", playerId);
+			return room >= wanted.getCount();
 		} catch (Exception e) {
-			EasyEconomyMod.LOGGER.error("pshop recall failed for {}", playerId, e);
-		}
-	}
-
-	public void savePlayer(UUID player) {
-		try {
-			// vanilla's per-player save is protected; saveAll is the public
-			// durable save and trades are human-paced
-			server.getPlayerList().saveAll();
-		} catch (Exception e) {
-			EasyEconomyMod.LOGGER.warn("player save failed after escrow step; crash loss window is larger until the next save", e);
+			return false;
 		}
 	}
 
 	@Override
+	public boolean savePlayer(UUID player) {
+		ServerPlayer p = server.getPlayerList().getPlayer(player);
+		if (p == null) {
+			return false;
+		}
+		return dev.easyeconomy.util.PlayerSaves.saveAllVerified(server, p);
+	}
+
 	public synchronized TxStore.MoneyMove moveMoney(UUID from, UUID to, long amount, String reason) {
 		EconomyCore.Result pay = economy.core().withdraw(from, amount, reason);
 		if (pay != EconomyCore.Result.OK) {

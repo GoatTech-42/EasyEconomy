@@ -16,8 +16,11 @@ works for bedrock players joining through geyser: same commands, same guis.
 
 ## geyser and bedrock players
 
-no extra setup: everything in this mod is vanilla chest guis, items and chat,
-which geyser already translates for bedrock clients. commands work the same.
+no extra setup is the design: everything in this mod is vanilla chest guis,
+items and chat, which geyser translates for bedrock clients, so commands work
+the same. this is a design assertion from using only vanilla ui elements -
+verified against geyser's documented translation behavior, not on a live
+bedrock client.
 
 if you also run floodgate on the server, easyeconomy notices it (soft
 dependency, nothing else is used) and logs when a bedrock player joins, so
@@ -46,16 +49,21 @@ challenges in `config/easyeconomy/challenges.json`.
 
 ## crash safety
 
-player-shop trades are journaled: every list, buy and cancel writes its
-intent and each durable step to disk (fsync, atomic rename) before moving
-on, and forces a player-data save after every hand change or delivery so a
-crash cannot roll inventories back into a dupe. a failed write aborts the
-trade and undoes anything already done, in memory and on disk. on startup
-the journal is replayed: interrupted payments are refunded, half-finished
-deliveries are reported and dropped - recovery never creates money or
-items, the worst case across any crash point is one lost item. the same
-rule holds for /deposit and /sell: items leave your hand before money
-arrives, never both at once.
+player-shop trades are journaled: every list, buy and cancel records its
+intent (including both balances before a buy) and each durable step to
+disk (fsync, atomic rename) before moving on. delivery only happens after
+its journal mark is durable, so a refund can never meet an item that was
+handed out. forced player-data saves are verified by reading the saved
+file back - vanilla's save call swallows write failures and returns
+normally, so the read-back is the only proof - and a save that cannot be
+verified aborts the trade before the other side reaches disk. money moves
+are durable-or-rolled-back: if the flush fails, the in-memory move is
+reversed, so a live balance can never claim a payment the disk does not
+have. recovery reads ground truth (the durable balances, the escrow
+contents), keeps the journal until a refund is actually durable, and
+escalates to the log when a seller can no longer cover one. the same
+ordering holds for /deposit, /withdraw, /sell and the server shop:
+removal durable before creation durable, each side verified.
 
 ## performance
 
@@ -67,7 +75,9 @@ build machine, yours will differ):
 - ~4m currency splits/sec
 
 challenge progress polls stats once per second per online player, a handful
-of map lookups per challenge. the economy will not show up in your tps.
+of map lookups per challenge. by design the economy should not show up in
+your tps; that is a design assertion from the workload shape, not a
+measured guarantee.
 
 ## testing
 
@@ -76,7 +86,7 @@ every feature claim above is backed by a test you can run:
 | claim | test |
 | --- | --- |
 | balances, /pay, /eco, limits, overflow safety | `gradle check`: 43 economy-core assertions, including an 8-thread transfer race proving money is conserved |
-| crash-safe player shops | `gradle check`: 156 transaction assertions - a crash injected at every step of list/buy/cancel, restart + recovery, forced write failures, recovery crashing mid-refund, unreadable-journal gate |
+| crash-safe player shops | `gradle check`: 179 transaction assertions - a crash injected at every step of list/buy/cancel, restart + recovery, forced write failures, recovery crashing mid-refund, refund flush failure with same-process retry, seller-unable-to-cover refund, silent player-save failure, full inventory, unreadable-journal gate |
 | currency forgery rejected | integration: anvil-renamed "coin" and tag-forged wrong-base item both rejected |
 | shop, sell, limits, guis | integration: real chest-menu clicks through every flow |
 | challenges pay out | integration: stat injection completes kill + obtain challenges; a reward earned at full balance goes pending and pays when there is room |
@@ -84,15 +94,25 @@ every feature claim above is backed by a test you can run:
 | performance numbers | `gradle perfCore` re-runs them |
 
 the integration suite is `tools/selftest.sh`: it boots a real server, joins
-two fake players, runs 36 checks through the real command dispatcher and
+two fake players, runs 41 checks through the real command dispatcher and
 real menus, restarts, and verifies persistence with 6 more. it is gated on
 a jvm flag and never active in normal play.
 
 ## known limits
 
-- crash recovery is loss-biased by design: the worst case at any crash
-  point is one lost item, reported in the log for an admin to refund.
-  nothing is ever duplicated.
+- crash recovery is loss-biased by design: nothing is ever duplicated,
+  but a crash inside one narrow window - after a buy's delivery mark is
+  durable and before the buyer's inventory save is verified - loses the
+  paid item, and a crash after a listing's hand-clear is saved but before
+  the listing reaches disk loses the listed item. both are reported in
+  the log for an admin to refund. these are the tested bounds.
+- if a seller has spent the payment before recovery can refund it, the
+  refund cannot be completed automatically: the journal is kept, trades
+  are blocked, and the log asks for an admin.
+- save verification reads the saved player file back and compares the
+  inventory. if minecraft's file layout changes in a future version the
+  verification may not match; the code then logs once and degrades to a
+  plain forced save, and this guarantee no longer holds.
 - the built-in pack server is off by default and serves only the one pack
   file, rate-limited. for anything serious, host the pack externally and
   put the url in server.properties; the config documents how.

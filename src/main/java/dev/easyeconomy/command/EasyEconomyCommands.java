@@ -130,11 +130,33 @@ public final class EasyEconomyCommands {
 	// own schedule; without this a crash can turn removal-then-credit into
 	// a loss, or debit-then-give into a rollback dupe. Best-effort: a failed
 	// save is logged, the in-memory state stays consistent.
-	private static void savePlayers(CommandSourceStack source) {
-		try {
-			source.getServer().getPlayerList().saveAll();
-		} catch (Exception e) {
-			EasyEconomyMod.LOGGER.error("forced player save failed", e);
+	// returns true only when the save is verified on disk by read-back;
+	// vanilla's save swallows write failures, so a void call proves nothing
+	private static boolean savePlayers(CommandSourceStack source, ServerPlayer player) {
+		return dev.easyeconomy.util.PlayerSaves.saveAllVerified(source.getServer(), player);
+	}
+
+	// Remove exactly `amount` worth of currency items from the inventory
+	// (used to reverse a withdrawal whose inventory save could not be
+	// verified). Best-effort; logs what it cannot take back.
+	private static void takeCoins(ServerPlayer player, long amount) {
+		long left = amount;
+		Inventory inv = player.getInventory();
+		for (int i = 0; i < inv.getContainerSize() && left > 0; i++) {
+			ItemStack slot = inv.getItem(i);
+			long denom = CurrencyItems.denominationOf(slot);
+			if (denom <= 0) {
+				continue;
+			}
+			long take = Math.min(slot.getCount(), left / denom);
+			if (take > 0) {
+				slot.shrink((int) take);
+				inv.setItem(i, slot);
+				left -= take * denom;
+			}
+		}
+		if (left > 0) {
+			EasyEconomyMod.LOGGER.error("could not take back {} of a reversed withdrawal from {}", left, player.getUUID());
 		}
 	}
 
@@ -184,7 +206,15 @@ public final class EasyEconomyCommands {
 				}
 			}
 		}
-		savePlayers(source);
+		if (!savePlayers(source, player)) {
+			// the coins may not survive a crash: take them back and refund
+			takeCoins(player, amount);
+			eco.core().deposit(player.getUUID(), amount, "withdraw-reverse");
+			saveMoney(eco);
+			savePlayers(source, player);
+			source.sendFailure(Component.literal("could not save your inventory; withdrawal reversed"));
+			return 0;
+		}
 		source.sendSuccess(() -> Component.literal("withdrew " + eco.format(amount)), false);
 		return 1;
 	}
@@ -208,14 +238,23 @@ public final class EasyEconomyCommands {
 		// may lose the coins but can never leave both the coins and the credit
 		ItemStack taken = held.copy();
 		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
-		savePlayers(source);
+		if (!savePlayers(source, player)) {
+			// the cleared hand is not provably on disk; put the coins back
+			// and stop, so a crash cannot roll back into a dupe
+			player.setItemInHand(InteractionHand.MAIN_HAND, taken);
+			savePlayers(source, player);
+			source.sendFailure(Component.literal("could not save your inventory; nothing deposited"));
+			return 0;
+		}
 		EconomyCore.Result result = eco.core().deposit(player.getUUID(), value, "deposit");
 		if (result != EconomyCore.Result.OK) {
 			player.getInventory().add(taken);
 			if (!taken.isEmpty()) {
 				player.spawnAtLocation(source.getLevel(), taken);
 			}
-			savePlayers(source);
+			if (!savePlayers(source, player)) {
+				EasyEconomyMod.LOGGER.error("deposit abort: coins returned to {} but the save is unverified", player.getUUID());
+			}
 			source.sendFailure(Component.literal(result == EconomyCore.Result.OVER_MAX_BALANCE
 					? "that would put you over the max balance" : "bad amount"));
 			return 0;
@@ -226,7 +265,9 @@ public final class EasyEconomyCommands {
 			if (!taken.isEmpty()) {
 				player.spawnAtLocation(source.getLevel(), taken);
 			}
-			savePlayers(source);
+			if (!savePlayers(source, player)) {
+				EasyEconomyMod.LOGGER.error("deposit unwind: coins returned to {} but the save is unverified", player.getUUID());
+			}
 			source.sendFailure(Component.literal("could not save your balance; coins returned"));
 			return 0;
 		}
@@ -263,7 +304,19 @@ public final class EasyEconomyCommands {
 				inv.setItem(i, ItemStack.EMPTY);
 			}
 		}
-		savePlayers(source);
+		if (!savePlayers(source, player)) {
+			// the cleared inventory is not provably on disk; put the coins
+			// back and stop, so a crash cannot roll back into a dupe
+			for (ItemStack back : takenAll) {
+				player.getInventory().add(back);
+				if (!back.isEmpty()) {
+					player.spawnAtLocation(source.getLevel(), back);
+				}
+			}
+			savePlayers(source, player);
+			source.sendFailure(Component.literal("could not save your inventory; nothing deposited"));
+			return 0;
+		}
 		EconomyCore.Result result = eco.core().deposit(player.getUUID(), total, "deposit-all");
 		if (result != EconomyCore.Result.OK) {
 			for (ItemStack back : takenAll) {
@@ -272,7 +325,9 @@ public final class EasyEconomyCommands {
 					player.spawnAtLocation(source.getLevel(), back);
 				}
 			}
-			savePlayers(source);
+			if (!savePlayers(source, player)) {
+				EasyEconomyMod.LOGGER.error("deposit-all abort: coins returned to {} but the save is unverified", player.getUUID());
+			}
 			source.sendFailure(Component.literal(result == EconomyCore.Result.OVER_MAX_BALANCE
 					? "that would put you over the max balance" : "bad amount"));
 			return 0;
@@ -285,7 +340,9 @@ public final class EasyEconomyCommands {
 					player.spawnAtLocation(source.getLevel(), back);
 				}
 			}
-			savePlayers(source);
+			if (!savePlayers(source, player)) {
+				EasyEconomyMod.LOGGER.error("deposit-all unwind: coins returned to {} but the save is unverified", player.getUUID());
+			}
 			source.sendFailure(Component.literal("could not save your balance; coins returned"));
 			return 0;
 		}
@@ -334,7 +391,12 @@ public final class EasyEconomyCommands {
 		// then the payout: a crash can lose the sale, never duplicate it
 		ItemStack taken = held.copy();
 		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
-		savePlayers(source);
+		if (!savePlayers(source, player)) {
+			player.setItemInHand(InteractionHand.MAIN_HAND, taken);
+			savePlayers(source, player);
+			source.sendFailure(Component.literal("could not save your inventory; nothing sold"));
+			return 0;
+		}
 		ShopService.SellOutcome outcome = shop.sell(player, taken);
 		if (outcome.result() == ShopService.SellResult.OK && !saveMoney(eco)) {
 			eco.core().withdraw(player.getUUID(), outcome.value(), "sell-unwind");
@@ -345,7 +407,9 @@ public final class EasyEconomyCommands {
 			if (!taken.isEmpty()) {
 				player.spawnAtLocation(source.getLevel(), taken);
 			}
-			savePlayers(source);
+			if (!savePlayers(source, player)) {
+				EasyEconomyMod.LOGGER.error("sell abort: item returned to {} but the save is unverified", player.getUUID());
+			}
 		}
 		switch (outcome.result()) {
 			case OK -> {

@@ -158,12 +158,30 @@ public final class ShopService {
 				player.spawnAtLocation(level, stack);
 			}
 		}
-		// force the new items to disk so a crash cannot roll the inventory
-		// back to before the purchase while the payment stays durable
-		try {
-			level.getServer().getPlayerList().saveAll();
-		} catch (Exception e) {
-			EasyEconomyMod.LOGGER.error("shop buy: forced player save failed", e);
+		// force the new items to disk and verify by read-back, so a crash
+		// cannot roll the inventory back to before the purchase while the
+		// payment stays durable; vanilla's save swallows write failures, so
+		// only the read-back proves anything
+		if (!dev.easyeconomy.util.PlayerSaves.saveAllVerified(level.getServer(), player)) {
+			// take the items back and refund, durably
+			long toRemove = count;
+			for (int i = 0; i < player.getInventory().getContainerSize() && toRemove > 0; i++) {
+				ItemStack slot = player.getInventory().getItem(i);
+				if (!slot.isEmpty() && slot.getItem() == item) {
+					int n = (int) Math.min(slot.getCount(), toRemove);
+					slot.shrink(n);
+					player.getInventory().setItem(i, slot);
+					toRemove -= n;
+				}
+			}
+			if (toRemove > 0) {
+				EasyEconomyMod.LOGGER.error("shop buy reversal could not remove {} x {} from {}", toRemove, entry.item, player.getUUID());
+			}
+			economy.core().deposit(player.getUUID(), price, "shop-buy-reverse:" + entry.item);
+			economy.save();
+			dev.easyeconomy.util.PlayerSaves.saveAllVerified(level.getServer(), player);
+			EasyEconomyMod.LOGGER.error("shop buy aborted: inventory save unverified, payment reversed");
+			return BuyResult.SAVE_FAILED;
 		}
 		return BuyResult.OK;
 	}
