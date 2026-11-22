@@ -68,6 +68,7 @@ loom {
 	runs {
 		server {
 			server()
+			vmArgs "-Deasyeconomy.selftest=" + providers.gradleProperty("eeSelftest").orElse("off").get()
 			vmArgs "-Xmx1G"
 		}
 	}

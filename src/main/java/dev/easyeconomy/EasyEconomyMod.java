@@ -63,6 +63,10 @@ public final class EasyEconomyMod implements ModInitializer {
 		});
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) ->
 				EasyEconomyCommands.register(dispatcher, economy, shop, playerShop, challenges));
+		if (dev.easyeconomy.selftest.SelfTest.enabled()) {
+			LOGGER.warn("selftest mode active - this is a test server, not for play");
+			dev.easyeconomy.selftest.SelfTest.register();
+		}
 		LOGGER.info("easyeconomy loaded");
 	}
 
@@ -72,6 +76,14 @@ public final class EasyEconomyMod implements ModInitializer {
 
 	public static ShopService shop() {
 		return shop;
+	}
+
+	public static PlayerShopService playerShop() {
+		return playerShop;
+	}
+
+	public static ChallengeService challenges() {
+		return challenges;
 	}
 
 	public static PackBuilder.Built pack() {
