@@ -86,6 +86,22 @@ public final class EconomyService {
 			EasyEconomyMod.LOGGER.info("loaded {} accounts", core.snapshot().size());
 		} catch (Exception e) {
 			EasyEconomyMod.LOGGER.error("failed to load accounts, starting empty", e);
+			// never let the next autosave overwrite a file we could not read:
+			// move it aside first, and never overwrite an earlier quarantine
+			try {
+				if (Files.exists(accountsFile)) {
+					String base = accountsFile.getFileName() + ".corrupt-" + System.currentTimeMillis();
+					Path aside = accountsFile.resolveSibling(base);
+					int n = 1;
+					while (Files.exists(aside)) {
+						aside = accountsFile.resolveSibling(base + "-" + (n++));
+					}
+					Files.move(accountsFile, aside);
+					EasyEconomyMod.LOGGER.error("unreadable accounts file quarantined to {}", aside.getFileName());
+				}
+			} catch (Exception moveFailed) {
+				EasyEconomyMod.LOGGER.error("could not quarantine the unreadable accounts file; autosave may overwrite it", moveFailed);
+			}
 		}
 	}
 

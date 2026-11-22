@@ -431,6 +431,20 @@ public final class SelfTest {
 				Files.writeString(accounts, good);
 				eco.load();
 				check("accounts restored", eco.core().snapshot().size() >= 2 && bal(a) == balA);
+				// an unreadable file is quarantined (renamed aside, never
+				// overwritten) so the next autosave cannot destroy it
+				Files.writeString(accounts, "{ this is not json ");
+				eco.load();
+				check("garbage load keeps current state", bal(a) == balA);
+				final boolean[] quarantined = { false };
+				try (var stream = Files.list(eco.dataDir())) {
+					quarantined[0] = stream.anyMatch(p -> p.getFileName().toString().startsWith("accounts.json.corrupt-"));
+				}
+				check("corrupt accounts file quarantined", quarantined[0]);
+				check("original accounts file moved away", !Files.exists(accounts));
+				Files.writeString(accounts, good);
+				eco.load();
+				check("accounts restored after quarantine", bal(a) == balA && eco.core().snapshot().size() >= 2);
 			} catch (Exception e) {
 				throw new IllegalStateException("hostile accounts stage failed", e);
 			}
