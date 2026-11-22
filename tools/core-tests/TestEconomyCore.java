@@ -80,7 +80,41 @@ public final class TestEconomyCore {
 		check("ledger records transfers", hasTransfer);
 		check("ledger records reasons", hasReason);
 
+
+		// currency denomination splitting
+		java.util.List<Long> denoms = java.util.List.of(1L, 5L, 10L, 50L, 100L);
+		java.util.Map<Long, Long> split = dev.easyeconomy.currency.CurrencyMath.split(0, denoms);
+		check("zero splits to nothing", split.isEmpty());
+		split = dev.easyeconomy.currency.CurrencyMath.split(187, denoms);
+		check("187 splits fewest first", split.toString().equals("{100=1, 50=1, 10=3, 5=1, 1=2}"));
+		check("split totals back", dev.easyeconomy.currency.CurrencyMath.total(split, 1000000) == 187);
+		split = dev.easyeconomy.currency.CurrencyMath.split(4, denoms);
+		check("small amount uses ones", split.toString().equals("{1=4}"));
+		boolean threw = false;
+		try {
+			dev.easyeconomy.currency.CurrencyMath.validate(java.util.List.of(5L, 10L));
+		} catch (IllegalArgumentException e) {
+			threw = true;
+		}
+		check("denominations without 1 rejected", threw);
+		threw = false;
+		try {
+			dev.easyeconomy.currency.CurrencyMath.split(-1, denoms);
+		} catch (IllegalArgumentException e) {
+			threw = true;
+		}
+		check("negative split rejected", threw);
+		threw = false;
+		try {
+			java.util.Map<Long, Long> huge = java.util.Map.of(1000000000L, 1000000000L);
+			dev.easyeconomy.currency.CurrencyMath.total(huge, 1000000);
+		} catch (ArithmeticException e) {
+			threw = true;
+		}
+		check("total overflow rejected", threw);
+
 		System.out.println("PASS " + checks + " assertions");
+
 	}
 
 	private static void check(String name, boolean ok) {
