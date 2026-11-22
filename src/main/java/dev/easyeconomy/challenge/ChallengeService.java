@@ -81,7 +81,7 @@ public final class ChallengeService {
 			ticks = 0;
 			poll(server);
 		}
-		int interval = Math.max(1, ConfigManager.get().autosaveMinutes) * 20 * 60;
+		long interval = (long) Math.max(1, ConfigManager.get().autosaveMinutes) * 20 * 60;
 		if (++ticksSinceSave >= interval && dirty) {
 			saveProgress();
 		}
