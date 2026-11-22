@@ -75,7 +75,7 @@ public final class ConfigManager {
 					config.minPayAmount, defaults.minPayAmount);
 			config.minPayAmount = defaults.minPayAmount;
 		}
-		if (config.autosaveMinutes < 1) {
+		if (config.autosaveMinutes < 1 || config.autosaveMinutes > 1440) {
 			EasyEconomyMod.LOGGER.error("autosaveMinutes must be 1-1440 ({}), using {}",
 					config.autosaveMinutes, defaults.autosaveMinutes);
 			config.autosaveMinutes = defaults.autosaveMinutes;

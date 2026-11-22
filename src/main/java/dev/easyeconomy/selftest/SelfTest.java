@@ -365,6 +365,7 @@ public final class SelfTest {
 					dev.easyeconomy.config.ConfigManager.load();
 				}
 				check("config restored", dev.easyeconomy.config.ConfigManager.get().maxBalance == 1_000_000_000L);
+
 				// cross-field coherence: with maxBalance lowered alone, the
 				// default startingBalance (50) violates the bound - the fallback
 				// must clamp to max, not restore a still-illegal value
@@ -396,6 +397,16 @@ public final class SelfTest {
 					dev.easyeconomy.config.ConfigManager.load();
 				}
 
+				// autosaveMinutes near Integer.MAX_VALUE overflows an int tick
+				// interval into an immediate save - clamp to the sane bound
+				try {
+					Files.writeString(cfg, "{ \"autosaveMinutes\": 2147483647 }");
+					dev.easyeconomy.config.ConfigManager.load();
+					check("autosaveMinutes upper-bounded", dev.easyeconomy.config.ConfigManager.get().autosaveMinutes == 5);
+				} finally {
+					Files.writeString(cfg, good);
+					dev.easyeconomy.config.ConfigManager.load();
+				}
 			} catch (Exception e) {
 				throw new IllegalStateException("config validation stage failed", e);
 			}
