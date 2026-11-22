@@ -7,6 +7,8 @@ public final class EeConfig {
 	public long maxBalance = 1_000_000_000L;
 	public long minPayAmount = 1;
 	public int autosaveMinutes = 5;
+	public String currencyBaseItem = "minecraft:paper";
+	public java.util.List<Long> denominations = java.util.List.of(1L, 5L, 10L, 50L, 100L);
 	public PackServer packServer = new PackServer();
 
 	public static final class PackServer {

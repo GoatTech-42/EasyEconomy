@@ -9,12 +9,18 @@ import dev.easyeconomy.config.ConfigManager;
 import dev.easyeconomy.config.EeConfig;
 import dev.easyeconomy.economy.EconomyCore;
 import dev.easyeconomy.economy.EconomyService;
+import dev.easyeconomy.currency.CurrencyItems;
+import dev.easyeconomy.currency.CurrencyMath;
+import dev.easyeconomy.EasyEconomyMod;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
 
 public final class EasyEconomyCommands {
 
@@ -43,6 +49,13 @@ public final class EasyEconomyCommands {
 						.then(Commands.argument("player", EntityArgument.player())
 								.then(Commands.argument("amount", LongArgumentType.longArg(0))
 										.executes(ctx -> admin(ctx, eco, AdminOp.SET))))));
+		dispatcher.register(Commands.literal("withdraw")
+				.then(Commands.argument("amount", LongArgumentType.longArg(1))
+						.executes(ctx -> withdraw(ctx.getSource(), LongArgumentType.getLong(ctx, "amount"), eco))));
+		dispatcher.register(Commands.literal("deposit")
+				.executes(ctx -> depositHand(ctx.getSource(), eco))
+				.then(Commands.literal("all")
+						.executes(ctx -> depositAll(ctx.getSource(), eco))));
 		dispatcher.register(Commands.literal("easyeconomy")
 				.executes(ctx -> info(ctx.getSource(), eco))
 				.then(Commands.literal("reload")
@@ -90,6 +103,104 @@ public final class EasyEconomyCommands {
 			default -> source.sendFailure(Component.literal("bad amount"));
 		}
 		return 0;
+	}
+
+	private static int withdraw(CommandSourceStack source, long amount, EconomyService eco) throws CommandSyntaxException {
+		ServerPlayer player = source.getPlayerOrException();
+		EconomyCore.Result result = eco.core().withdraw(player.getUUID(), amount, "withdraw");
+		if (result != EconomyCore.Result.OK) {
+			if (result == EconomyCore.Result.INSUFFICIENT_FUNDS) {
+				source.sendFailure(Component.literal("not enough " + ConfigManager.get().currencyPlural));
+			} else {
+				source.sendFailure(Component.literal("bad amount"));
+			}
+			return 0;
+		}
+		eco.changed();
+		for (java.util.Map.Entry<Long, Long> e : CurrencyMath.split(amount, CurrencyItems.denominations()).entrySet()) {
+			long left = e.getValue();
+			while (left > 0) {
+				int count = (int) Math.min(64, left);
+				left -= count;
+				ItemStack stack = CurrencyItems.coin(e.getKey(), count);
+				player.getInventory().add(stack);
+				if (!stack.isEmpty()) {
+					player.spawnAtLocation(source.getLevel(), stack);
+				}
+			}
+		}
+		source.sendSuccess(() -> Component.literal("withdrew " + eco.format(amount)), false);
+		return 1;
+	}
+
+	private static int depositHand(CommandSourceStack source, EconomyService eco) throws CommandSyntaxException {
+		ServerPlayer player = source.getPlayerOrException();
+		ItemStack held = player.getMainHandItem();
+		long denom = CurrencyItems.denominationOf(held);
+		if (denom <= 0) {
+			source.sendFailure(Component.literal("hold a currency item to deposit it"));
+			return 0;
+		}
+		long value;
+		try {
+			value = Math.multiplyExact(denom, held.getCount());
+		} catch (ArithmeticException e) {
+			source.sendFailure(Component.literal("bad amount"));
+			return 0;
+		}
+		EconomyCore.Result result = eco.core().deposit(player.getUUID(), value, "deposit");
+		if (result == EconomyCore.Result.OVER_MAX_BALANCE) {
+			source.sendFailure(Component.literal("that would put you over the max balance"));
+			return 0;
+		}
+		if (result != EconomyCore.Result.OK) {
+			source.sendFailure(Component.literal("bad amount"));
+			return 0;
+		}
+		eco.changed();
+		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+		source.sendSuccess(() -> Component.literal("deposited " + eco.format(value)), false);
+		return 1;
+	}
+
+	private static int depositAll(CommandSourceStack source, EconomyService eco) throws CommandSyntaxException {
+		ServerPlayer player = source.getPlayerOrException();
+		Inventory inv = player.getInventory();
+		long total = 0;
+		try {
+			for (int i = 0; i < inv.getContainerSize(); i++) {
+				ItemStack stack = inv.getItem(i);
+				long denom = CurrencyItems.denominationOf(stack);
+				if (denom > 0) {
+					total = Math.addExact(total, Math.multiplyExact(denom, stack.getCount()));
+				}
+			}
+		} catch (ArithmeticException e) {
+			source.sendFailure(Component.literal("bad amount"));
+			return 0;
+		}
+		if (total == 0) {
+			source.sendFailure(Component.literal("no currency items in your inventory"));
+			return 0;
+		}
+		EconomyCore.Result result = eco.core().deposit(player.getUUID(), total, "deposit-all");
+		if (result == EconomyCore.Result.OVER_MAX_BALANCE) {
+			source.sendFailure(Component.literal("that would put you over the max balance"));
+			return 0;
+		}
+		if (result != EconomyCore.Result.OK) {
+			source.sendFailure(Component.literal("bad amount"));
+			return 0;
+		}
+		eco.changed();
+		for (int i = 0; i < inv.getContainerSize(); i++) {
+			if (CurrencyItems.denominationOf(inv.getItem(i)) > 0) {
+				inv.setItem(i, ItemStack.EMPTY);
+			}
+		}
+		long deposited = total;
+		source.sendSuccess(() -> Component.literal("deposited " + eco.format(deposited)), false);
+		return 1;
 	}
 
 	private enum AdminOp { GIVE, TAKE, SET }
@@ -146,7 +257,7 @@ public final class EasyEconomyCommands {
 	}
 
 	private static int reload(CommandSourceStack source, EconomyService eco) {
-		eco.reload();
+		EasyEconomyMod.reloadAll();
 		source.sendSuccess(() -> Component.literal("reloaded easyeconomy config"), true);
 		return 1;
 	}

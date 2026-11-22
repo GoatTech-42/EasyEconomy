@@ -42,3 +42,12 @@ def testCoreTests = tasks.register('testCoreTests', JavaExec) {
 	mainClass = 'TestEconomyCore'
 }
 tasks.named('check') { dependsOn testCoreTests }
+
+loom {
+	runs {
+		server {
+			server()
+			vmArgs "-Xmx1G"
+		}
+	}
+}

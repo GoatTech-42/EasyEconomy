@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.stream.JsonReader;
 import dev.easyeconomy.EasyEconomyMod;
+import dev.easyeconomy.currency.CurrencyMath;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -50,6 +51,12 @@ public final class ConfigManager {
 			EasyEconomyMod.LOGGER.error("failed to load config, using defaults", e);
 			config = new EeConfig();
 		}
+		try {
+			CurrencyMath.validate(config.denominations);
+		} catch (IllegalArgumentException e) {
+			EasyEconomyMod.LOGGER.error("bad denominations in config ({}), using defaults", e.getMessage());
+			config.denominations = new EeConfig().denominations;
+		}
 	}
 
 	public static void writeAtomic(Path target, String content) throws IOException {
@@ -83,12 +90,21 @@ public final class ConfigManager {
 		  // how often balances are written to disk, in minutes
 		  "autosaveMinutes": 5,
 
+		  // vanilla item the coins are built on. must stay an item every
+		  // vanilla client already has, or players get kicked on join.
+		  "currencyBaseItem": "minecraft:paper",
+
+		  // coin denominations, biggest used first. must contain 1.
+		  "denominations": [1, 5, 10, 50, 100],
+
 		  // built-in resource pack web server. off by default.
-		  // it serves one static pack file at one fixed path, nothing else,
-		  // with per-client rate limiting. if you turn it on, point
-		  // resource-pack= in server.properties at it.
-		  // better: host the generated pack yourself and put that url in
-		  // server.properties instead, then leave this off.
+		  // it serves one static pack file at one fixed path
+		  // (/easyeconomy-pack.zip), nothing else, with per-client rate
+		  // limiting. if you turn it on, point resource-pack= in
+		  // server.properties at http://<this-server>:<port>/easyeconomy-pack.zip
+		  // and set resource-pack-sha1 to the hash the mod logs at startup.
+		  // better: host the generated pack (easyeconomy/easyeconomy-pack.zip)
+		  // yourself and put that url in server.properties, then leave this off.
 		  "packServer": {
 		    "enabled": false,
 		    "bind": "127.0.0.1",
