@@ -137,6 +137,8 @@ public final class TxOps {
 			// the delivering mark is durable, so this trade counts as
 			// delivered; a crash now can lose the item. Loss-biased, logged.
 			s.error("pshop buy: delivery save unverified for " + buyer + "; a crash now may lose the item (already logged as delivered)");
+			s.warnPlayer(buyer,
+					"your purchase is complete, but your inventory could not be saved safely; a crash may lose the item - tell an admin if it vanishes");
 		}
 		clearQuietly(s);
 		return Outcome.OK;

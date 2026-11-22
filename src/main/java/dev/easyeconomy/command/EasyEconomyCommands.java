@@ -225,6 +225,11 @@ public final class EasyEconomyCommands {
 			// a crash may lose the coins, never duplicate them
 			EasyEconomyMod.LOGGER.error("withdraw: coin save unverified for {}; the withdrawal stands, a crash now may lose the coins",
 					player.getUUID());
+			if (voided) {
+				source.sendSuccess(() -> Component.literal("withdrew " + eco.format(amount)
+						+ ", but some coins were lost in delivery and your inventory could not be saved safely; a crash may lose the rest - an admin has been notified"), false);
+				return 1;
+			}
 			source.sendSuccess(() -> Component.literal("withdrew " + eco.format(amount)
 					+ ", but your inventory could not be saved safely; a crash may lose the coins - tell an admin if they vanish"), false);
 			return 1;

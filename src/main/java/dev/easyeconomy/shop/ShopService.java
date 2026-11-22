@@ -31,7 +31,7 @@ import java.util.UUID;
 // back. Per-player buy limits persist across restarts so relogging or a
 // reboot can't reset them.
 public final class ShopService {
-	public enum BuyResult { SAVE_FAILED, OK, OK_PARTIAL, OK_SAVE_UNVERIFIED, NO_PRICE, INSUFFICIENT_FUNDS, OVER_MAX, LIMIT_REACHED, BAD_ITEM, NO_ROOM }
+	public enum BuyResult { SAVE_FAILED, OK, OK_PARTIAL, OK_SAVE_UNVERIFIED, OK_PARTIAL_SAVE_UNVERIFIED, NO_PRICE, INSUFFICIENT_FUNDS, OVER_MAX, LIMIT_REACHED, BAD_ITEM, NO_ROOM }
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 	private static final Type LIMITS_TYPE = new TypeToken<Map<String, Map<String, long[]>>>() {
@@ -181,7 +181,7 @@ public final class ShopService {
 		if (!dev.easyeconomy.util.PlayerSaves.saveAllVerified(level.getServer(), player)) {
 			EasyEconomyMod.LOGGER.error("shop buy: inventory save unverified for {}; the sale stands, a crash now may lose the delivered items",
 					player.getUUID());
-			return BuyResult.OK_SAVE_UNVERIFIED;
+			return voided ? BuyResult.OK_PARTIAL_SAVE_UNVERIFIED : BuyResult.OK_SAVE_UNVERIFIED;
 		}
 		return voided ? BuyResult.OK_PARTIAL : BuyResult.OK;
 	}
