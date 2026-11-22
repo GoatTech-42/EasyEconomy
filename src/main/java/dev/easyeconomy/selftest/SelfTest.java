@@ -365,6 +365,19 @@ public final class SelfTest {
 					dev.easyeconomy.config.ConfigManager.load();
 				}
 				check("config restored", dev.easyeconomy.config.ConfigManager.get().maxBalance == 1_000_000_000L);
+				// cross-field coherence: with maxBalance lowered alone, the
+				// default startingBalance (50) violates the bound - the fallback
+				// must clamp to max, not restore a still-illegal value
+				try {
+					Files.writeString(cfg, "{ \"maxBalance\": 10 }");
+					dev.easyeconomy.config.ConfigManager.load();
+					var c2 = dev.easyeconomy.config.ConfigManager.get();
+					check("startingBalance fallback coherent with max", c2.startingBalance == 10 && c2.startingBalance <= c2.maxBalance);
+				} finally {
+					Files.writeString(cfg, good);
+					dev.easyeconomy.config.ConfigManager.load();
+				}
+
 			} catch (Exception e) {
 				throw new IllegalStateException("config validation stage failed", e);
 			}

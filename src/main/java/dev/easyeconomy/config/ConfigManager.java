@@ -65,9 +65,10 @@ public final class ConfigManager {
 			config.maxBalance = defaults.maxBalance;
 		}
 		if (config.startingBalance < 0 || config.startingBalance > config.maxBalance) {
+			long fallback = Math.min(defaults.startingBalance, config.maxBalance);
 			EasyEconomyMod.LOGGER.error("startingBalance must be between 0 and maxBalance ({}), using {}",
-					config.startingBalance, defaults.startingBalance);
-			config.startingBalance = defaults.startingBalance;
+					config.startingBalance, fallback);
+			config.startingBalance = fallback;
 		}
 		if (config.minPayAmount < 1 || config.minPayAmount > config.maxBalance) {
 			EasyEconomyMod.LOGGER.error("minPayAmount must be between 1 and maxBalance ({}), using {}",
@@ -75,7 +76,7 @@ public final class ConfigManager {
 			config.minPayAmount = defaults.minPayAmount;
 		}
 		if (config.autosaveMinutes < 1) {
-			EasyEconomyMod.LOGGER.error("autosaveMinutes must be at least 1 ({}), using {}",
+			EasyEconomyMod.LOGGER.error("autosaveMinutes must be 1-1440 ({}), using {}",
 					config.autosaveMinutes, defaults.autosaveMinutes);
 			config.autosaveMinutes = defaults.autosaveMinutes;
 		}
