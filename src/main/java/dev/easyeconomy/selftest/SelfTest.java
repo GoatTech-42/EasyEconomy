@@ -56,8 +56,21 @@ public final class SelfTest {
 	private SelfTest() {
 	}
 
+	// Only the two real modes enable the selftest. The gradle dev runtime
+	// passes -Deasyeconomy.selftest=off by default, and "off" (or anything
+	// else unexpected) must mean off: otherwise every dev server would run
+	// the verify plan against a world that was never staged.
 	public static boolean enabled() {
-		return System.getProperty("easyeconomy.selftest") != null;
+		String mode = System.getProperty("easyeconomy.selftest");
+		return "run".equals(mode) || "verify".equals(mode);
+	}
+
+	// thrown after a failed check so the rest of the stage does not run
+	// against a server that is already halting
+	private static final class SelfTestFailure extends RuntimeException {
+		SelfTestFailure(String name) {
+			super(name, null, false, false);
+		}
 	}
 
 	public static void register() {
@@ -79,6 +92,8 @@ public final class SelfTest {
 			if (stage != null) {
 				try {
 					stage.run();
+				} catch (SelfTestFailure t) {
+					// already logged by check(); just stop
 				} catch (Throwable t) {
 					EasyEconomyMod.LOGGER.error("SELFTEST FAIL: stage threw", t);
 					failed = true;
@@ -211,7 +226,25 @@ public final class SelfTest {
 			check("wither skull complete", challenges.cooldownLeft(b.getUUID(), "wither-skull") > 0);
 			check("obtain challenge paid", bal(b) == 145);
 		});
-		stages.put(200, () -> {
+		stages.put(185, () -> {
+			// fill the balance to the cap, then complete a challenge: the
+			// reward must not vanish, it must go pending
+			console("eco set itest_b 1000000000");
+			b.awardStat(Stats.BLOCK_MINED.get(net.minecraft.world.level.block.Blocks.DIAMOND_ORE), 32);
+		});
+		stages.put(220, () -> {
+			ChallengeService challenges = EasyEconomyMod.challenges();
+			check("diamond miner done", challenges.isDone(b.getUUID(), "diamond-miner"));
+			check("full balance not paid", bal(b) == 1_000_000_000L);
+			check("reward pending", challenges.pendingOf(b.getUUID(), "diamond-miner") == 100);
+			console("eco take itest_b 500000000");
+		});
+		stages.put(255, () -> {
+			ChallengeService challenges = EasyEconomyMod.challenges();
+			check("pending reward paid after room", bal(b) == 500_000_100L);
+			check("pending cleared", challenges.pendingOf(b.getUUID(), "diamond-miner") == 0);
+		});
+		stages.put(260, () -> {
 			EconomyService eco = EasyEconomyMod.economy();
 			check("accounts flush", eco.save());
 			EasyEconomyMod.shop().saveLimits();
@@ -320,6 +353,10 @@ public final class SelfTest {
 			EasyEconomyMod.LOGGER.error("SELFTEST FAIL: {}", name);
 			failed = true;
 			server.halt(false);
+			// halt is asynchronous; abort the stage so later steps in it do
+			// not keep running (and keep logging misleading oks) against a
+			// server that is already going down
+			throw new SelfTestFailure(name);
 		}
 	}
 }

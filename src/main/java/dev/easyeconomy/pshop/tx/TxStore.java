@@ -18,6 +18,9 @@ public interface TxStore {
 	// must restore the map entry so memory and disk stay consistent.
 	void escrowRemovePersist(UUID id, String listingJson) throws TxException;
 
+	// current balance as recovery will read it (loaded from disk at startup)
+	long balanceOf(UUID player);
+
 	// money: move from -> to atomically in memory. INSUFFICIENT means the
 	// sender could not pay and nothing moved. SELLER_FULL means the sender
 	// was debited and immediately refunded, so nothing moved either way.
@@ -38,6 +41,16 @@ public interface TxStore {
 	void giveItem(UUID player, String listingJson);
 
 	void deliverItem(UUID player, String listingJson);
+
+	// Take back a previously delivered item (memory effect). Used when the
+	// journal cannot record that delivery started, so recovery will refund.
+	void takeItem(UUID player, String listingJson);
+
+	// Force the player's saved data to disk. Vanilla saves inventories on
+	// its own schedule; without this a crash can roll a hand-clear or a
+	// delivery back and turn it into a dupe or an unexplained loss.
+	// Best-effort: implementations log and continue on failure.
+	void savePlayer(UUID player);
 
 	void warn(String msg);
 

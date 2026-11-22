@@ -46,7 +46,7 @@ public final class PlayerShopService implements TxStore {
 	private final EconomyService economy;
 	private final Path file;
 	private final Path journalFile;
-	private final Map<UUID, Listing> listings = new LinkedHashMap<>();
+	private final EscrowStore store = new EscrowStore(this::writeListings);
 	private MinecraftServer server;
 
 	public PlayerShopService(EconomyService economy) {
@@ -60,12 +60,16 @@ public final class PlayerShopService implements TxStore {
 	}
 
 	public synchronized List<Listing> all() {
-		return new ArrayList<>(listings.values());
+		List<Listing> out = new ArrayList<>();
+		for (String json : store.all()) {
+			out.add(fromJson(JsonParser.parseString(json).getAsJsonObject()));
+		}
+		return out;
 	}
 
 	public synchronized List<Listing> of(UUID seller) {
 		List<Listing> out = new ArrayList<>();
-		for (Listing l : listings.values()) {
+		for (Listing l : all()) {
 			if (l.seller.equals(seller)) {
 				out.add(l);
 			}
@@ -98,10 +102,11 @@ public final class PlayerShopService implements TxStore {
 	}
 
 	public synchronized BuyResult buy(ServerPlayer buyer, UUID listingId) {
-		Listing listing = listings.get(listingId);
-		if (listing == null) {
+		String json = store.get(listingId);
+		if (json == null) {
 			return BuyResult.NOT_FOUND;
 		}
+		Listing listing = fromJson(JsonParser.parseString(json).getAsJsonObject());
 		if (listing.seller.equals(buyer.getUUID())) {
 			return BuyResult.OWN_LISTING;
 		}
@@ -116,15 +121,19 @@ public final class PlayerShopService implements TxStore {
 	}
 
 	public synchronized boolean cancel(ServerPlayer player, UUID listingId) {
-		Listing listing = listings.get(listingId);
-		if (listing == null || !listing.seller.equals(player.getUUID())) {
+		String json = store.get(listingId);
+		if (json == null) {
+			return false;
+		}
+		Listing listing = fromJson(JsonParser.parseString(json).getAsJsonObject());
+		if (!listing.seller.equals(player.getUUID())) {
 			return false;
 		}
 		return TxOps.cancel(this, listing.id, listing.seller, listing.price, toJson(listing).toString()) == TxOps.Outcome.OK;
 	}
 
 	public synchronized void load(RegistryAccess access) {
-		listings.clear();
+		List<String> valid = new ArrayList<>();
 		try {
 			if (Files.exists(file)) {
 				JsonArray arr = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonArray();
@@ -134,7 +143,7 @@ public final class PlayerShopService implements TxStore {
 						Listing l = fromJson(el.getAsJsonObject());
 						// validate the item now so a bad entry never reaches a buyer
 						l.stack(RegistryOps.create(NbtOps.INSTANCE, access));
-						listings.put(l.id, l);
+						valid.add(el.getAsJsonObject().toString());
 					} catch (Exception e) {
 						dropped++;
 					}
@@ -143,10 +152,12 @@ public final class PlayerShopService implements TxStore {
 					EasyEconomyMod.LOGGER.warn("dropped {} unreadable listings", dropped);
 				}
 			}
-			EasyEconomyMod.LOGGER.info("player shop loaded: {} listings", listings.size());
 		} catch (Exception e) {
 			EasyEconomyMod.LOGGER.error("failed to load listings, starting empty", e);
 		}
+		store.loadAll(valid, json -> UUID.fromString(
+				JsonParser.parseString(json).getAsJsonObject().get("id").getAsString()));
+		EasyEconomyMod.LOGGER.info("player shop loaded: {} listings", store.size());
 		// finish or unwind whatever was in flight when the server last stopped
 		TxOps.recover(this);
 	}
@@ -174,11 +185,12 @@ public final class PlayerShopService implements TxStore {
 				o.get("item").getAsString());
 	}
 
-	private synchronized void save() throws TxException {
+	// EscrowStore flush callback: the listing jsons are already canonical.
+	private void writeListings(List<String> listingJsons) throws TxException {
 		try {
 			JsonArray arr = new JsonArray();
-			for (Listing l : listings.values()) {
-				arr.add(toJson(l));
+			for (String json : listingJsons) {
+				arr.add(JsonParser.parseString(json));
 			}
 			ConfigManager.writeAtomic(file, GSON.toJson(arr));
 		} catch (Exception e) {
@@ -194,27 +206,56 @@ public final class PlayerShopService implements TxStore {
 
 	@Override
 	public synchronized boolean escrowHas(UUID id) {
-		return listings.containsKey(id);
+		return store.has(id);
 	}
 
 	@Override
 	public synchronized void escrowPutPersist(String listingJson) throws TxException {
 		Listing l = fromJson(JsonParser.parseString(listingJson).getAsJsonObject());
-		listings.put(l.id, l);
-		save();
+		// the store rolls the insert back if the flush fails, so a returned
+		// item can never coexist with a live listing
+		store.putPersist(l.id, listingJson);
 	}
 
 	@Override
 	public synchronized void escrowRemovePersist(UUID id, String listingJson) throws TxException {
-		Listing removed = listings.remove(id);
+		store.removePersist(id);
+	}
+
+	@Override
+	public long balanceOf(UUID player) {
+		return economy.core().balance(player);
+	}
+
+	@Override
+	public void takeItem(UUID playerId, String listingJson) {
+		ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+		if (player == null) {
+			return;
+		}
 		try {
-			save();
-		} catch (TxException e) {
-			// keep memory and disk consistent: the listing is still live
-			if (removed != null) {
-				listings.put(id, removed);
+			ItemStack wanted = fromJson(JsonParser.parseString(listingJson).getAsJsonObject()).stack(ops());
+			for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+				ItemStack slot = player.getInventory().getItem(i);
+				if (!slot.isEmpty() && ItemStack.isSameItemSameComponents(slot, wanted)) {
+					slot.shrink(wanted.getCount());
+					player.getInventory().setItem(i, slot);
+					return;
+				}
 			}
-			throw e;
+			EasyEconomyMod.LOGGER.error("pshop recall could not find the delivered item for {}", playerId);
+		} catch (Exception e) {
+			EasyEconomyMod.LOGGER.error("pshop recall failed for {}", playerId, e);
+		}
+	}
+
+	public void savePlayer(UUID player) {
+		try {
+			// vanilla's per-player save is protected; saveAll is the public
+			// durable save and trades are human-paced
+			server.getPlayerList().saveAll();
+		} catch (Exception e) {
+			EasyEconomyMod.LOGGER.warn("player save failed after escrow step; crash loss window is larger until the next save", e);
 		}
 	}
 

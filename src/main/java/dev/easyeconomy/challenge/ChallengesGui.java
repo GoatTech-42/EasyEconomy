@@ -43,6 +43,10 @@ public final class ChallengesGui extends MenuGui {
 				lore.add(c.description);
 			}
 			lore.add("reward: " + economy.format(c.reward));
+			long pending = service.pendingOf(player.getUUID(), c.id);
+			if (pending > 0) {
+				lore.add("payment pending - make room in your balance");
+			}
 			if (service.isDone(player.getUUID(), c.id) && !c.repeatable) {
 				lore.add("completed");
 			} else {

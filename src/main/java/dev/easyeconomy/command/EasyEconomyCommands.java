@@ -125,6 +125,34 @@ public final class EasyEconomyCommands {
 		return 0;
 	}
 
+	// Force every player's data to disk so an inventory change made by a
+	// money command cannot be rolled back by a crash. Vanilla saves on its
+	// own schedule; without this a crash can turn removal-then-credit into
+	// a loss, or debit-then-give into a rollback dupe. Best-effort: a failed
+	// save is logged, the in-memory state stays consistent.
+	private static void savePlayers(CommandSourceStack source) {
+		try {
+			source.getServer().getPlayerList().saveAll();
+		} catch (Exception e) {
+			EasyEconomyMod.LOGGER.error("forced player save failed", e);
+		}
+	}
+
+	// Flush balances now, not at the next autosave, so the money side of an
+	// item trade is durable before the item side exists (or right after the
+	// item side is durable).
+	private static boolean saveMoney(EconomyService eco) {
+		try {
+			if (eco.save()) {
+				return true;
+			}
+		} catch (Exception e) {
+			EasyEconomyMod.LOGGER.error("forced balance save failed", e);
+		}
+		EasyEconomyMod.LOGGER.error("forced balance save failed");
+		return false;
+	}
+
 	private static int withdraw(CommandSourceStack source, long amount, EconomyService eco) throws CommandSyntaxException {
 		ServerPlayer player = source.getPlayerOrException();
 		EconomyCore.Result result = eco.core().withdraw(player.getUUID(), amount, "withdraw");
@@ -136,7 +164,14 @@ public final class EasyEconomyCommands {
 			}
 			return 0;
 		}
-		eco.changed();
+		// the debit must reach disk before the coins do: a crash may then
+		// lose coins, but can never leave both the balance and the coins
+		if (!saveMoney(eco)) {
+			eco.core().deposit(player.getUUID(), amount, "withdraw-unwind");
+			saveMoney(eco);
+			source.sendFailure(Component.literal("could not save your balance; nothing withdrawn"));
+			return 0;
+		}
 		for (java.util.Map.Entry<Long, Long> e : CurrencyMath.split(amount, CurrencyItems.denominations()).entrySet()) {
 			long left = e.getValue();
 			while (left > 0) {
@@ -149,6 +184,7 @@ public final class EasyEconomyCommands {
 				}
 			}
 		}
+		savePlayers(source);
 		source.sendSuccess(() -> Component.literal("withdrew " + eco.format(amount)), false);
 		return 1;
 	}
@@ -168,21 +204,32 @@ public final class EasyEconomyCommands {
 			source.sendFailure(Component.literal("bad amount"));
 			return 0;
 		}
-		// remove the coins first, then credit: a crash may lose the coins but
-		// can never leave both the coins and the credit
+		// remove the coins first and make that durable, then credit: a crash
+		// may lose the coins but can never leave both the coins and the credit
 		ItemStack taken = held.copy();
 		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+		savePlayers(source);
 		EconomyCore.Result result = eco.core().deposit(player.getUUID(), value, "deposit");
 		if (result != EconomyCore.Result.OK) {
 			player.getInventory().add(taken);
 			if (!taken.isEmpty()) {
 				player.spawnAtLocation(source.getLevel(), taken);
 			}
+			savePlayers(source);
 			source.sendFailure(Component.literal(result == EconomyCore.Result.OVER_MAX_BALANCE
 					? "that would put you over the max balance" : "bad amount"));
 			return 0;
 		}
-		eco.changed();
+		if (!saveMoney(eco)) {
+			eco.core().withdraw(player.getUUID(), value, "deposit-unwind");
+			player.getInventory().add(taken);
+			if (!taken.isEmpty()) {
+				player.spawnAtLocation(source.getLevel(), taken);
+			}
+			savePlayers(source);
+			source.sendFailure(Component.literal("could not save your balance; coins returned"));
+			return 0;
+		}
 		source.sendSuccess(() -> Component.literal("deposited " + eco.format(value)), false);
 		return 1;
 	}
@@ -216,6 +263,7 @@ public final class EasyEconomyCommands {
 				inv.setItem(i, ItemStack.EMPTY);
 			}
 		}
+		savePlayers(source);
 		EconomyCore.Result result = eco.core().deposit(player.getUUID(), total, "deposit-all");
 		if (result != EconomyCore.Result.OK) {
 			for (ItemStack back : takenAll) {
@@ -224,11 +272,23 @@ public final class EasyEconomyCommands {
 					player.spawnAtLocation(source.getLevel(), back);
 				}
 			}
+			savePlayers(source);
 			source.sendFailure(Component.literal(result == EconomyCore.Result.OVER_MAX_BALANCE
 					? "that would put you over the max balance" : "bad amount"));
 			return 0;
 		}
-		eco.changed();
+		if (!saveMoney(eco)) {
+			eco.core().withdraw(player.getUUID(), total, "deposit-all-unwind");
+			for (ItemStack back : takenAll) {
+				player.getInventory().add(back);
+				if (!back.isEmpty()) {
+					player.spawnAtLocation(source.getLevel(), back);
+				}
+			}
+			savePlayers(source);
+			source.sendFailure(Component.literal("could not save your balance; coins returned"));
+			return 0;
+		}
 		long deposited = total;
 		source.sendSuccess(() -> Component.literal("deposited " + eco.format(deposited)), false);
 		return 1;
@@ -270,21 +330,31 @@ public final class EasyEconomyCommands {
 			source.sendFailure(Component.literal("hold an item to sell it"));
 			return 0;
 		}
-		// item leaves the hand first, payout follows: never both at once
+		// item leaves the hand first and that removal is forced to disk,
+		// then the payout: a crash can lose the sale, never duplicate it
 		ItemStack taken = held.copy();
 		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+		savePlayers(source);
 		ShopService.SellOutcome outcome = shop.sell(player, taken);
+		if (outcome.result() == ShopService.SellResult.OK && !saveMoney(eco)) {
+			eco.core().withdraw(player.getUUID(), outcome.value(), "sell-unwind");
+			outcome = new ShopService.SellOutcome(ShopService.SellResult.FAILED, 0, 0);
+		}
 		if (outcome.result() != ShopService.SellResult.OK) {
 			player.getInventory().add(taken);
 			if (!taken.isEmpty()) {
 				player.spawnAtLocation(source.getLevel(), taken);
 			}
+			savePlayers(source);
 		}
 		switch (outcome.result()) {
 			case OK -> {
-				source.sendSuccess(() -> Component.literal("sold " + outcome.count() + " for " + eco.format(outcome.value())), false);
+				long soldCount = outcome.count();
+				long soldValue = outcome.value();
+				source.sendSuccess(() -> Component.literal("sold " + soldCount + " for " + eco.format(soldValue)), false);
 				return 1;
 			}
+			case FAILED -> source.sendFailure(Component.literal("could not save your balance; item returned"));
 			case NO_ITEM -> source.sendFailure(Component.literal("hold an item to sell it"));
 			case IS_CURRENCY -> source.sendFailure(Component.literal("that's currency - use /deposit"));
 			case NO_PRICE -> source.sendFailure(Component.literal("the server doesn't buy that"));

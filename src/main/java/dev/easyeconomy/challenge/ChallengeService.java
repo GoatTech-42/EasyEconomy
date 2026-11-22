@@ -56,6 +56,8 @@ public final class ChallengeService {
 		Map<String, Integer> progress = new HashMap<>();
 		Map<String, Long> completedAt = new HashMap<>();
 		Map<String, Long> cooldownUntil = new HashMap<>();
+		// earned but unpaid because the balance was full; retried every poll
+		Map<String, Long> pendingRewards = new HashMap<>();
 	}
 
 	public ChallengeService(EconomyService economy) {
@@ -131,6 +133,7 @@ public final class ChallengeService {
 			return;
 		}
 		long now = System.currentTimeMillis();
+		retryPending(player, state, c);
 		boolean doneOnce = state.completedAt.containsKey(c.id);
 		if (doneOnce && !c.repeatable) {
 			return;
@@ -234,17 +237,49 @@ public final class ChallengeService {
 		}
 	}
 
+	// Pays out a reward that was earned while the balance was full. Runs
+	// before every other check, so no stat delta or event is needed: once
+	// there is room, the next poll pays.
+	private void retryPending(ServerPlayer player, PlayerState state, ChallengeConfig.Challenge c) {
+		Long pending = state.pendingRewards.get(c.id);
+		if (pending == null) {
+			return;
+		}
+		EconomyCore.Result result = economy.core().deposit(player.getUUID(), pending, "challenge:" + c.id);
+		if (result == EconomyCore.Result.OK) {
+			economy.changed();
+			state.pendingRewards.remove(c.id);
+			dirty = true;
+			player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+					"challenge paid out: " + c.name + " (+" + economy.format(pending) + ")"));
+		}
+	}
+
+	public synchronized long pendingOf(java.util.UUID player, String challengeId) {
+		PlayerState state = states.get(player.toString());
+		return state == null ? 0 : state.pendingRewards.getOrDefault(challengeId, 0L);
+	}
+
 	private void complete(ServerPlayer player, PlayerState state, ChallengeConfig.Challenge c, long now) {
 		EconomyCore.Result result = economy.core().deposit(player.getUUID(), c.reward, "challenge:" + c.id);
 		if (result == EconomyCore.Result.OVER_MAX_BALANCE) {
+			// the reward is earned either way; park it and pay when there is room
+			state.pendingRewards.merge(c.id, c.reward, Long::sum);
+			markDone(state, c, now);
 			player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-					"challenge \"" + c.name + "\" done, but your balance is full - make room and it will pay out"));
-			return; // stays completable: progress is already at goal, retried next poll
-		}
-		if (result != EconomyCore.Result.OK) {
+					"challenge \"" + c.name + "\" done, but your balance is full - it pays out once you make room"));
 			return;
 		}
+		if (result != EconomyCore.Result.OK) {
+			return; // not recorded as done: retried by the normal flow
+		}
 		economy.changed();
+		markDone(state, c, now);
+		player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+				"challenge complete: " + c.name + " (+" + economy.format(c.reward) + ")"));
+	}
+
+	private void markDone(PlayerState state, ChallengeConfig.Challenge c, long now) {
 		state.completedAt.put(c.id, now);
 		if (c.repeatable) {
 			state.progress.put(c.id, 0);
@@ -253,8 +288,6 @@ public final class ChallengeService {
 			}
 		}
 		dirty = true;
-		player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-				"challenge complete: " + c.name + " (+" + economy.format(c.reward) + ")"));
 	}
 
 	public synchronized void load() {
@@ -290,6 +323,7 @@ public final class ChallengeService {
 				o.add("progress", GSON.toJsonTree(e.getValue().progress));
 				o.add("completedAt", GSON.toJsonTree(e.getValue().completedAt));
 				o.add("cooldownUntil", GSON.toJsonTree(e.getValue().cooldownUntil));
+				o.add("pendingRewards", GSON.toJsonTree(e.getValue().pendingRewards));
 				root.add(e.getKey(), o);
 			}
 			ConfigManager.writeAtomic(progressFile, GSON.toJson(root));
@@ -314,6 +348,7 @@ public final class ChallengeService {
 				state.progress = readIntMap(o, "progress");
 				state.completedAt = readLongMap(o, "completedAt");
 				state.cooldownUntil = readLongMap(o, "cooldownUntil");
+				state.pendingRewards = readLongMap(o, "pendingRewards");
 				states.put(e.getKey(), state);
 			}
 		} catch (Exception e) {

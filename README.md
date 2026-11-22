@@ -48,12 +48,14 @@ challenges in `config/easyeconomy/challenges.json`.
 
 player-shop trades are journaled: every list, buy and cancel writes its
 intent and each durable step to disk (fsync, atomic rename) before moving
-on. a failed write aborts the trade and undoes anything already done. on
-startup the journal is replayed: interrupted payments are refunded,
-half-finished deliveries are reported and dropped - recovery never creates
-money or items, the worst case across any crash point is one lost item.
-the same rule holds for /deposit and /sell: items leave your hand before
-money arrives, never both at once.
+on, and forces a player-data save after every hand change or delivery so a
+crash cannot roll inventories back into a dupe. a failed write aborts the
+trade and undoes anything already done, in memory and on disk. on startup
+the journal is replayed: interrupted payments are refunded, half-finished
+deliveries are reported and dropped - recovery never creates money or
+items, the worst case across any crash point is one lost item. the same
+rule holds for /deposit and /sell: items leave your hand before money
+arrives, never both at once.
 
 ## performance
 
@@ -74,10 +76,10 @@ every feature claim above is backed by a test you can run:
 | claim | test |
 | --- | --- |
 | balances, /pay, /eco, limits, overflow safety | `gradle check`: 43 economy-core assertions, including an 8-thread transfer race proving money is conserved |
-| crash-safe player shops | `gradle check`: 119 transaction assertions - a crash injected at every step of list/buy/cancel, restart + recovery, forced write failures, recovery crashing mid-refund |
+| crash-safe player shops | `gradle check`: 156 transaction assertions - a crash injected at every step of list/buy/cancel, restart + recovery, forced write failures, recovery crashing mid-refund, unreadable-journal gate |
 | currency forgery rejected | integration: anvil-renamed "coin" and tag-forged wrong-base item both rejected |
 | shop, sell, limits, guis | integration: real chest-menu clicks through every flow |
-| challenges pay out | integration: stat injection completes kill + obtain challenges |
+| challenges pay out | integration: stat injection completes kill + obtain challenges; a reward earned at full balance goes pending and pays when there is room |
 | state survives restart | integration verify phase: balances, buy limits, challenge progress, escrow |
 | performance numbers | `gradle perfCore` re-runs them |
 

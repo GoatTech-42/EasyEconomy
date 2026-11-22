@@ -31,7 +31,7 @@ import java.util.UUID;
 // back. Per-player buy limits persist across restarts so relogging or a
 // reboot can't reset them.
 public final class ShopService {
-	public enum BuyResult { OK, NO_PRICE, INSUFFICIENT_FUNDS, OVER_MAX, LIMIT_REACHED, BAD_ITEM }
+	public enum BuyResult { SAVE_FAILED, OK, NO_PRICE, INSUFFICIENT_FUNDS, OVER_MAX, LIMIT_REACHED, BAD_ITEM }
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 	private static final Type LIMITS_TYPE = new TypeToken<Map<String, Map<String, long[]>>>() {
@@ -138,7 +138,14 @@ public final class ShopService {
 		if (pay != EconomyCore.Result.OK) {
 			return BuyResult.OVER_MAX;
 		}
-		economy.changed();
+		// the payment must reach disk before the items do: a crash may then
+		// lose items, but can never leave both the balance and the items
+		if (!economy.save()) {
+			economy.core().deposit(player.getUUID(), price, "shop-buy-unwind:" + entry.item);
+			economy.save();
+			EasyEconomyMod.LOGGER.error("shop buy aborted: balance save failed, payment reversed");
+			return BuyResult.SAVE_FAILED;
+		}
 		// limit is only recorded once the money actually moved
 		recordLimit(player.getUUID(), entry, count);
 		long left = count;
@@ -150,6 +157,13 @@ public final class ShopService {
 			if (!stack.isEmpty()) {
 				player.spawnAtLocation(level, stack);
 			}
+		}
+		// force the new items to disk so a crash cannot roll the inventory
+		// back to before the purchase while the payment stays durable
+		try {
+			level.getServer().getPlayerList().saveAll();
+		} catch (Exception e) {
+			EasyEconomyMod.LOGGER.error("shop buy: forced player save failed", e);
 		}
 		return BuyResult.OK;
 	}

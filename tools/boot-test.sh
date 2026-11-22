@@ -9,7 +9,13 @@ rm -f run/logs/latest.log
 setsid gradle runServer --no-daemon --console=plain -q > /tmp/easyeconomy-runserver.out 2>&1 &
 LEADER=$!
 START=$(ps -o lstart= -p "$LEADER" 2>/dev/null || true)
-echo "launched leader pid=$LEADER start=$START"
+PGID=$(ps -o pgid= -p "$LEADER" 2>/dev/null | tr -d ' ' || true)
+echo "launched leader pid=$LEADER pgid=$PGID start=$START"
+if [ "$PGID" != "$LEADER" ]; then
+  echo "leader is not its own process group leader (pgid=$PGID), refusing to run"
+  exit 1
+fi
+trap stop_server EXIT
 
 booted=0
 for i in $(seq 1 30); do
@@ -29,11 +35,17 @@ stop_server() {
     *gradle*runServer*|*GradleDaemon*) ;;
     *) echo "unexpected cmdline for $LEADER, refusing to signal: $now_cmd"; return 1 ;;
   esac
-  kill -TERM -- -"$LEADER" 2>/dev/null || kill -TERM "$LEADER" 2>/dev/null || true
+  if [ "$(ps -o pgid= -p "$LEADER" 2>/dev/null | tr -d ' ')" = "$LEADER" ]; then
+    kill -TERM -- -"$LEADER" 2>/dev/null || true
+  else
+    echo "PGID no longer matches leader, signaling pid only"
+    kill -TERM "$LEADER" 2>/dev/null || true
+  fi
   for i in $(seq 1 10); do kill -0 "$LEADER" 2>/dev/null || break; sleep 1; done
   kill -0 "$LEADER" 2>/dev/null && echo "leader still alive after TERM" || echo "server stopped (TERM, verified pid=$LEADER)"
 }
 
 grep -E 'easyeconomy loaded|challenges loaded|player shop loaded|recovery|ERROR|Exception' run/logs/latest.log 2>/dev/null | head -15
 stop_server
+trap - EXIT
 [ "$booted" = 1 ] && echo "BOOT OK" || echo "BOOT FAILED"

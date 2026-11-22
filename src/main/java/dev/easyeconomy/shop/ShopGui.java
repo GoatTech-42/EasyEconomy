@@ -119,6 +119,7 @@ public final class ShopGui extends MenuGui {
 			case NO_PRICE -> player.sendSystemMessage(Component.literal("not for sale"));
 			case INSUFFICIENT_FUNDS -> player.sendSystemMessage(Component.literal("not enough " + dev.easyeconomy.config.ConfigManager.get().currencyPlural));
 			case LIMIT_REACHED -> player.sendSystemMessage(Component.literal("buy limit reached for this item"));
+			case SAVE_FAILED -> player.sendSystemMessage(Component.literal("could not save your balance; nothing bought"));
 			default -> player.sendSystemMessage(Component.literal("can't buy that"));
 		}
 		if (result == ShopService.BuyResult.OK) {
