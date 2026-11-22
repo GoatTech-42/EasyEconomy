@@ -1,6 +1,6 @@
 # easyeconomy
 
-a server-side fabric economy mod for minecraft 26.3. geyser friendly.
+a server-side fabric economy mod for minecraft 26.3. geyser friendly by design (see below).
 
 - player balances with /balance, /pay and admin /eco
 - physical currency items with a small built-in resource pack
@@ -12,7 +12,8 @@ a server-side fabric economy mod for minecraft 26.3. geyser friendly.
 needs fabric loader and fabric api on the server only. clients need nothing;
 the resource pack is optional and only changes how things look.
 
-works for bedrock players joining through geyser: same commands, same guis.
+bedrock players joining through geyser get the same commands and guis
+(a design assertion - the geyser section below says what that rests on).
 
 ## geyser and bedrock players
 
@@ -85,7 +86,7 @@ every feature claim above is backed by a test you can run:
 
 | claim | test |
 | --- | --- |
-| balances, /pay, /eco, limits, overflow safety | `gradle check`: 43 economy-core assertions, including an 8-thread transfer race proving money is conserved |
+| balances, /pay, /eco, limits, overflow safety | `gradle check`: 44 economy-core assertions, including an 8-thread transfer race proving money is conserved |
 | crash-safe player shops | `gradle check`: 179 transaction assertions - a crash injected at every step of list/buy/cancel, restart + recovery, forced write failures, recovery crashing mid-refund, refund flush failure with same-process retry, seller-unable-to-cover refund, silent player-save failure, full inventory, unreadable-journal gate |
 | currency forgery rejected | integration: anvil-renamed "coin" and tag-forged wrong-base item both rejected |
 | shop, sell, limits, guis | integration: real chest-menu clicks through every flow |
