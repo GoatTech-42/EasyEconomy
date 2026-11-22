@@ -37,6 +37,9 @@ public final class CurrencyMath {
 			throw new IllegalArgumentException("no denominations");
 		}
 		List<Long> sorted = new ArrayList<>(denominations);
+		if (sorted.contains(null)) {
+			throw new IllegalArgumentException("null denomination");
+		}
 		Collections.sort(sorted);
 		long prev = 0;
 		for (long d : sorted) {

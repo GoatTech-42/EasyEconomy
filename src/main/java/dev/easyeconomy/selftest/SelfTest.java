@@ -341,6 +341,34 @@ public final class SelfTest {
 			check("just-over-balance withdraw refused", bal(a) == before);
 			check("no coins materialized", coinValue(a) == 5); // the 5 from stage 258
 		});
+		stages.put(262, () -> {
+			// config validation: impossible admin values must be replaced by
+			// defaults with a loud log, never used silently. The live config
+			// is swapped, loaded, checked and restored inside one tick.
+			try {
+				java.nio.file.Path cfg = dev.easyeconomy.config.ConfigManager.file();
+				String good = Files.readString(cfg);
+				try {
+					Files.writeString(cfg, "{ \"maxBalance\": -5, \"startingBalance\": 999999999999,"
+							+ " \"minPayAmount\": 0, \"autosaveMinutes\": 0, \"maxListingsPerPlayer\": 0,"
+							+ " \"packServer\": { \"port\": 70000 } }");
+					dev.easyeconomy.config.ConfigManager.load();
+					var c = dev.easyeconomy.config.ConfigManager.get();
+					check("bad maxBalance clamped", c.maxBalance == 1_000_000_000L);
+					check("bad startingBalance clamped", c.startingBalance == 50);
+					check("bad minPayAmount clamped", c.minPayAmount == 1);
+					check("bad autosaveMinutes clamped", c.autosaveMinutes == 5);
+					check("bad maxListings clamped", c.maxListingsPerPlayer == 10);
+					check("bad pack port clamped", c.packServer.port == 8180);
+				} finally {
+					Files.writeString(cfg, good);
+					dev.easyeconomy.config.ConfigManager.load();
+				}
+				check("config restored", dev.easyeconomy.config.ConfigManager.get().maxBalance == 1_000_000_000L);
+			} catch (Exception e) {
+				throw new IllegalStateException("config validation stage failed", e);
+			}
+		});
 		stages.put(265, () -> {
 			EconomyService eco = EasyEconomyMod.economy();
 			check("accounts flush", eco.save());

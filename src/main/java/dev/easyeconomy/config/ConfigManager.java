@@ -57,6 +57,55 @@ public final class ConfigManager {
 			EasyEconomyMod.LOGGER.error("bad denominations in config ({}), using defaults", e.getMessage());
 			config.denominations = new EeConfig().denominations;
 		}
+		// every value an admin can type is checked; anything impossible is
+		// replaced by the default with a loud log, never used silently
+		EeConfig defaults = new EeConfig();
+		if (config.maxBalance <= 0) {
+			EasyEconomyMod.LOGGER.error("maxBalance must be positive ({}), using {}", config.maxBalance, defaults.maxBalance);
+			config.maxBalance = defaults.maxBalance;
+		}
+		if (config.startingBalance < 0 || config.startingBalance > config.maxBalance) {
+			EasyEconomyMod.LOGGER.error("startingBalance must be between 0 and maxBalance ({}), using {}",
+					config.startingBalance, defaults.startingBalance);
+			config.startingBalance = defaults.startingBalance;
+		}
+		if (config.minPayAmount < 1 || config.minPayAmount > config.maxBalance) {
+			EasyEconomyMod.LOGGER.error("minPayAmount must be between 1 and maxBalance ({}), using {}",
+					config.minPayAmount, defaults.minPayAmount);
+			config.minPayAmount = defaults.minPayAmount;
+		}
+		if (config.autosaveMinutes < 1) {
+			EasyEconomyMod.LOGGER.error("autosaveMinutes must be at least 1 ({}), using {}",
+					config.autosaveMinutes, defaults.autosaveMinutes);
+			config.autosaveMinutes = defaults.autosaveMinutes;
+		}
+		if (config.maxListingsPerPlayer < 1) {
+			EasyEconomyMod.LOGGER.error("maxListingsPerPlayer must be at least 1 ({}), using {}",
+					config.maxListingsPerPlayer, defaults.maxListingsPerPlayer);
+			config.maxListingsPerPlayer = defaults.maxListingsPerPlayer;
+		}
+		if (config.currencySingular == null || config.currencySingular.isBlank()) {
+			config.currencySingular = defaults.currencySingular;
+		}
+		if (config.currencyPlural == null || config.currencyPlural.isBlank()) {
+			config.currencyPlural = defaults.currencyPlural;
+		}
+		net.minecraft.resources.Identifier baseId = net.minecraft.resources.Identifier.tryParse(config.currencyBaseItem == null ? "" : config.currencyBaseItem);
+		if (baseId == null || net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(baseId) == net.minecraft.world.item.Items.AIR) {
+			EasyEconomyMod.LOGGER.error("unknown currencyBaseItem ({}), coins fall back to {}",
+					config.currencyBaseItem, defaults.currencyBaseItem);
+		}
+		if (config.packServer == null) {
+			config.packServer = new EeConfig.PackServer();
+		}
+		if (config.packServer.bind == null || config.packServer.bind.isBlank()) {
+			config.packServer.bind = defaults.packServer.bind;
+		}
+		if (config.packServer.port < 1 || config.packServer.port > 65535) {
+			EasyEconomyMod.LOGGER.error("pack server port must be 1-65535 ({}), using {}",
+					config.packServer.port, defaults.packServer.port);
+			config.packServer.port = defaults.packServer.port;
+		}
 	}
 
 	public static void writeAtomic(Path target, String content) throws IOException {
