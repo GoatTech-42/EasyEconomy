@@ -7,8 +7,10 @@ import dev.easyeconomy.currency.CurrencyItems;
 import dev.easyeconomy.economy.EconomyService;
 import dev.easyeconomy.gui.MenuGui;
 import dev.easyeconomy.pshop.PlayerShopGui;
+import dev.easyeconomy.pshop.PlayerShopService;
 import dev.easyeconomy.shop.ShopGui;
 import dev.easyeconomy.shop.ShopService;
+import dev.easyeconomy.util.PlayerSaves;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.component.DataComponents;
@@ -244,7 +246,91 @@ public final class SelfTest {
 			check("pending reward paid after room", bal(b) == 500_000_100L);
 			check("pending cleared", challenges.pendingOf(b.getUUID(), "diamond-miner") == 0);
 		});
-		stages.put(260, () -> {
+		stages.put(256, () -> {
+			// QA round-3 regression: a buyer whose 36 main slots are full has no
+			// room, even though equipment/offhand are empty. The buy must be
+			// refused, not completed with the item spilled at their feet.
+			console("eco give itest_a 1000");
+			for (int i = 0; i < a.getInventory().getNonEquipmentItems().size(); i++) {
+				a.getInventory().setItem(i, new ItemStack(Items.DIRT, 64));
+			}
+			b.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, new ItemStack(Items.DIAMOND, 1));
+			as(b, "ps sell 5");
+			check("r3 listing created", EasyEconomyMod.playerShop().all().size() == 1);
+			long before = bal(a);
+			PlayerShopService.BuyResult result = EasyEconomyMod.playerShop().buy(a,
+					EasyEconomyMod.playerShop().all().get(0).id);
+			check("full-inventory pshop buy refused", result == PlayerShopService.BuyResult.NO_ROOM);
+			check("full-inventory pshop buy left balance alone", bal(a) == before);
+			check("refused listing still for sale", EasyEconomyMod.playerShop().all().size() == 1);
+			PlayerShopGui.open(b, EasyEconomyMod.playerShop(), EasyEconomyMod.economy());
+			click(b, 49, ContainerInput.PICKUP); // my listings
+			click(b, 0, ContainerInput.PICKUP); // cancel it
+			check("r3 listing cancelled", EasyEconomyMod.playerShop().all().isEmpty());
+			a.getInventory().clearContent();
+		});
+		stages.put(257, () -> {
+			// QA round-3 regression: the delivery save writes but its read-back
+			// fails, then the removal save silently does not write. The sale must
+			// stand: refunding there would leave the paid item durable on disk
+			// AND the money back in the account.
+			ShopService shop = EasyEconomyMod.shop();
+			dev.easyeconomy.shop.ShopConfig.Entry entry = null;
+			for (var cat : shop.config().categories) {
+				for (var e : cat.items) {
+					if (e.buyPrice > 0 && shop.limitRemaining(a.getUUID(), e) != 0) {
+						entry = e;
+						break;
+					}
+				}
+				if (entry != null) {
+					break;
+				}
+			}
+			check("r3 shop entry available", entry != null);
+			final var chosen = entry;
+			var item = shop.itemOf(chosen);
+			long beforeBal = bal(a);
+			int beforeCount = countItem(a, item);
+			PlayerSaves.scriptForTesting(PlayerSaves.TestFault.WRITE_BUT_UNVERIFIED,
+					PlayerSaves.TestFault.SKIP_AND_UNVERIFIED);
+			ShopService.BuyResult result = shop.buy(a, a.level(), chosen, 1);
+			PlayerSaves.clearTestScript();
+			check("unverified shop delivery: sale stands", result == ShopService.BuyResult.OK);
+			check("unverified shop delivery: balance debited", bal(a) == beforeBal - chosen.buyPrice);
+			check("unverified shop delivery: item kept", countItem(a, item) == beforeCount + 1);
+		});
+		stages.put(258, () -> {
+			// Same fault pair on /withdraw: the coins may already be durable, so
+			// the debit must stand and the coins stay in hand; refunding against
+			// possibly-saved coins would dupe them.
+			long beforeBal = bal(a);
+			PlayerSaves.scriptForTesting(PlayerSaves.TestFault.WRITE_BUT_UNVERIFIED,
+					PlayerSaves.TestFault.SKIP_AND_UNVERIFIED);
+			as(a, "withdraw 5");
+			PlayerSaves.clearTestScript();
+			check("unverified withdraw: withdrawal stands", bal(a) == beforeBal - 5);
+			check("unverified withdraw: coins kept", coinValue(a) == 5);
+		});
+		stages.put(259, () -> {
+			// QA round-3: the cancel return-save window. Escrow removal is
+			// durable before the returned item is provably saved; when that
+			// save cannot be verified the cancel still stands (loss-biased,
+			// never a dupe) and the failure must be loud.
+			b.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, new ItemStack(Items.EMERALD, 3));
+			as(b, "ps sell 7");
+			check("r3 cancel listing created", EasyEconomyMod.playerShop().all().size() == 1);
+			int emeraldsBefore = countItem(b, Items.EMERALD);
+			PlayerSaves.scriptForTesting(PlayerSaves.TestFault.SKIP_AND_UNVERIFIED);
+			PlayerShopGui.open(b, EasyEconomyMod.playerShop(), EasyEconomyMod.economy());
+			click(b, 49, ContainerInput.PICKUP); // my listings
+			click(b, 0, ContainerInput.PICKUP); // cancel it
+			PlayerSaves.clearTestScript();
+			check("cancel with unverified return save: escrow empty", EasyEconomyMod.playerShop().all().isEmpty());
+			check("cancel with unverified return save: item kept in memory",
+					countItem(b, Items.EMERALD) == emeraldsBefore + 3);
+		});
+		stages.put(265, () -> {
 			EconomyService eco = EasyEconomyMod.economy();
 			check("accounts flush", eco.save());
 			EasyEconomyMod.shop().saveLimits();

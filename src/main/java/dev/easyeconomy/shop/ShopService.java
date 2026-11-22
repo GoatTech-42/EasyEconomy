@@ -31,7 +31,7 @@ import java.util.UUID;
 // back. Per-player buy limits persist across restarts so relogging or a
 // reboot can't reset them.
 public final class ShopService {
-	public enum BuyResult { SAVE_FAILED, OK, NO_PRICE, INSUFFICIENT_FUNDS, OVER_MAX, LIMIT_REACHED, BAD_ITEM }
+	public enum BuyResult { SAVE_FAILED, OK, NO_PRICE, INSUFFICIENT_FUNDS, OVER_MAX, LIMIT_REACHED, BAD_ITEM, NO_ROOM }
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 	private static final Type LIMITS_TYPE = new TypeToken<Map<String, Map<String, long[]>>>() {
@@ -131,6 +131,19 @@ public final class ShopService {
 		if (!limitAllows(player.getUUID(), entry, count)) {
 			return BuyResult.LIMIT_REACHED;
 		}
+		// capacity first: a delivery that cannot fit would spill into dropped
+		// entities, and those can never be recalled safely if the inventory
+		// save afterwards cannot be verified
+		java.util.List<ItemStack> delivery = new java.util.ArrayList<>();
+		long toMake = count;
+		while (toMake > 0) {
+			int n = (int) Math.min(item.getDefaultMaxStackSize(), toMake);
+			toMake -= n;
+			delivery.add(new ItemStack(item, n));
+		}
+		if (!dev.easyeconomy.util.Inventories.canAbsorb(player.getInventory(), delivery)) {
+			return BuyResult.NO_ROOM;
+		}
 		EconomyCore.Result pay = economy.core().withdraw(player.getUUID(), price, "shop-buy:" + entry.item + "x" + count);
 		if (pay == EconomyCore.Result.INSUFFICIENT_FUNDS) {
 			return BuyResult.INSUFFICIENT_FUNDS;
@@ -148,40 +161,24 @@ public final class ShopService {
 		}
 		// limit is only recorded once the money actually moved
 		recordLimit(player.getUUID(), entry, count);
-		long left = count;
-		while (left > 0) {
-			int n = (int) Math.min(item.getDefaultMaxStackSize(), left);
-			left -= n;
-			ItemStack stack = new ItemStack(item, n);
+		for (ItemStack stack : delivery) {
 			player.getInventory().add(stack);
 			if (!stack.isEmpty()) {
-				player.spawnAtLocation(level, stack);
+				// capacity was checked before payment, so a remainder here means
+				// the inventory changed in between. never spill it into a dropped
+				// entity; void it, keep the sale, and say so loudly
+				EasyEconomyMod.LOGGER.error("shop buy overflow: voided {} x {} for {}; the sale stands, an admin should refund",
+						stack.getCount(), entry.item, player.getUUID());
+				stack.setCount(0);
 			}
 		}
-		// force the new items to disk and verify by read-back, so a crash
-		// cannot roll the inventory back to before the purchase while the
-		// payment stays durable; vanilla's save swallows write failures, so
-		// only the read-back proves anything
+		// force the new items to disk and verify by read-back. if the save
+		// cannot be verified the items may already be durable, so the sale
+		// stands: refunding there could leave both the money and the items.
+		// a crash may then lose the delivered items, never duplicate them
 		if (!dev.easyeconomy.util.PlayerSaves.saveAllVerified(level.getServer(), player)) {
-			// take the items back and refund, durably
-			long toRemove = count;
-			for (int i = 0; i < player.getInventory().getContainerSize() && toRemove > 0; i++) {
-				ItemStack slot = player.getInventory().getItem(i);
-				if (!slot.isEmpty() && slot.getItem() == item) {
-					int n = (int) Math.min(slot.getCount(), toRemove);
-					slot.shrink(n);
-					player.getInventory().setItem(i, slot);
-					toRemove -= n;
-				}
-			}
-			if (toRemove > 0) {
-				EasyEconomyMod.LOGGER.error("shop buy reversal could not remove {} x {} from {}", toRemove, entry.item, player.getUUID());
-			}
-			economy.core().deposit(player.getUUID(), price, "shop-buy-reverse:" + entry.item);
-			economy.save();
-			dev.easyeconomy.util.PlayerSaves.saveAllVerified(level.getServer(), player);
-			EasyEconomyMod.LOGGER.error("shop buy aborted: inventory save unverified, payment reversed");
-			return BuyResult.SAVE_FAILED;
+			EasyEconomyMod.LOGGER.error("shop buy: inventory save unverified for {}; the sale stands, a crash now may lose the delivered items",
+					player.getUUID());
 		}
 		return BuyResult.OK;
 	}

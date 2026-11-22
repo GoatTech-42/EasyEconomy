@@ -136,30 +136,6 @@ public final class EasyEconomyCommands {
 		return dev.easyeconomy.util.PlayerSaves.saveAllVerified(source.getServer(), player);
 	}
 
-	// Remove exactly `amount` worth of currency items from the inventory
-	// (used to reverse a withdrawal whose inventory save could not be
-	// verified). Best-effort; logs what it cannot take back.
-	private static void takeCoins(ServerPlayer player, long amount) {
-		long left = amount;
-		Inventory inv = player.getInventory();
-		for (int i = 0; i < inv.getContainerSize() && left > 0; i++) {
-			ItemStack slot = inv.getItem(i);
-			long denom = CurrencyItems.denominationOf(slot);
-			if (denom <= 0) {
-				continue;
-			}
-			long take = Math.min(slot.getCount(), left / denom);
-			if (take > 0) {
-				slot.shrink((int) take);
-				inv.setItem(i, slot);
-				left -= take * denom;
-			}
-		}
-		if (left > 0) {
-			EasyEconomyMod.LOGGER.error("could not take back {} of a reversed withdrawal from {}", left, player.getUUID());
-		}
-	}
-
 	// Flush balances now, not at the next autosave, so the money side of an
 	// item trade is durable before the item side exists (or right after the
 	// item side is durable).
@@ -177,6 +153,22 @@ public final class EasyEconomyCommands {
 
 	private static int withdraw(CommandSourceStack source, long amount, EconomyService eco) throws CommandSyntaxException {
 		ServerPlayer player = source.getPlayerOrException();
+		// build the coins first and make sure they can actually be carried:
+		// an overflow dropped at the feet could never be recalled safely if
+		// the inventory save afterwards cannot be verified
+		java.util.List<ItemStack> coins = new java.util.ArrayList<>();
+		for (java.util.Map.Entry<Long, Long> e : CurrencyMath.split(amount, CurrencyItems.denominations()).entrySet()) {
+			long toMake = e.getValue();
+			while (toMake > 0) {
+				int count = (int) Math.min(64, toMake);
+				toMake -= count;
+				coins.add(CurrencyItems.coin(e.getKey(), count));
+			}
+		}
+		if (!dev.easyeconomy.util.Inventories.canAbsorb(player.getInventory(), coins)) {
+			source.sendFailure(Component.literal("not enough inventory space"));
+			return 0;
+		}
 		EconomyCore.Result result = eco.core().withdraw(player.getUUID(), amount, "withdraw");
 		if (result != EconomyCore.Result.OK) {
 			if (result == EconomyCore.Result.INSUFFICIENT_FUNDS) {
@@ -194,26 +186,23 @@ public final class EasyEconomyCommands {
 			source.sendFailure(Component.literal("could not save your balance; nothing withdrawn"));
 			return 0;
 		}
-		for (java.util.Map.Entry<Long, Long> e : CurrencyMath.split(amount, CurrencyItems.denominations()).entrySet()) {
-			long left = e.getValue();
-			while (left > 0) {
-				int count = (int) Math.min(64, left);
-				left -= count;
-				ItemStack stack = CurrencyItems.coin(e.getKey(), count);
-				player.getInventory().add(stack);
-				if (!stack.isEmpty()) {
-					player.spawnAtLocation(source.getLevel(), stack);
-				}
+		for (ItemStack stack : coins) {
+			player.getInventory().add(stack);
+			if (!stack.isEmpty()) {
+				// capacity was checked before the debit, so a remainder here
+				// means the inventory changed in between. never spill it into a
+				// dropped entity; void it, keep the withdrawal, and say so loudly
+				EasyEconomyMod.LOGGER.error("withdraw overflow: voided {} coins for {}; the withdrawal stands, an admin should refund",
+						CurrencyItems.denominationOf(stack) * stack.getCount(), player.getUUID());
+				stack.setCount(0);
 			}
 		}
 		if (!savePlayers(source, player)) {
-			// the coins may not survive a crash: take them back and refund
-			takeCoins(player, amount);
-			eco.core().deposit(player.getUUID(), amount, "withdraw-reverse");
-			saveMoney(eco);
-			savePlayers(source, player);
-			source.sendFailure(Component.literal("could not save your inventory; withdrawal reversed"));
-			return 0;
+			// the coins may already be durable, so the withdrawal stands:
+			// refunding against possibly-saved coins would duplicate them.
+			// a crash may lose the coins, never duplicate them
+			EasyEconomyMod.LOGGER.error("withdraw: coin save unverified for {}; the withdrawal stands, a crash now may lose the coins",
+					player.getUUID());
 		}
 		source.sendSuccess(() -> Component.literal("withdrew " + eco.format(amount)), false);
 		return 1;

@@ -236,17 +236,9 @@ public final class PlayerShopService implements TxStore {
 		}
 		try {
 			ItemStack wanted = fromJson(JsonParser.parseString(listingJson).getAsJsonObject()).stack(ops());
-			int max = wanted.getMaxStackSize();
-			long room = 0;
-			for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-				ItemStack slot = player.getInventory().getItem(i);
-				if (slot.isEmpty()) {
-					room += max;
-				} else if (ItemStack.isSameItemSameComponents(slot, wanted)) {
-					room += max - slot.getCount();
-				}
-			}
-			return room >= wanted.getCount();
+			// only space Inventory.add can really use: the 36 main slots plus
+			// merging into a matching offhand stack, never equipment slots
+			return dev.easyeconomy.util.Inventories.canAbsorb(player.getInventory(), java.util.List.of(wanted));
 		} catch (Exception e) {
 			return false;
 		}
@@ -336,7 +328,12 @@ public final class PlayerShopService implements TxStore {
 			ItemStack stack = fromJson(JsonParser.parseString(listingJson).getAsJsonObject()).stack(ops());
 			player.getInventory().add(stack);
 			if (!stack.isEmpty()) {
-				player.spawnAtLocation(player.level(), stack);
+				// capacity is checked before the sale, so a remainder here means
+				// the inventory changed in between. never spill it into a dropped
+				// entity; void it, keep the sale, and say so loudly
+				EasyEconomyMod.LOGGER.error("pshop delivery overflow: voided {} for {}; the sale stands, an admin should refund",
+						stack, playerId);
+				stack.setCount(0);
 			}
 		} catch (Exception e) {
 			EasyEconomyMod.LOGGER.error("pshop delivery failed, item lost", e);

@@ -95,25 +95,36 @@ every feature claim above is backed by a test you can run:
 | performance numbers | `gradle perfCore` re-runs them |
 
 the integration suite is `tools/selftest.sh`: it boots a real server, joins
-two fake players, runs 41 checks through the real command dispatcher and
+two fake players, runs 50 checks through the real command dispatcher and
 real menus, restarts, and verifies persistence with 6 more. it is gated on
 a jvm flag and never active in normal play.
 
 ## known limits
 
-- crash recovery is loss-biased by design: nothing is ever duplicated,
-  but a crash inside one narrow window - after a buy's delivery mark is
-  durable and before the buyer's inventory save is verified - loses the
-  paid item, and a crash after a listing's hand-clear is saved but before
-  the listing reaches disk loses the listed item. both are reported in
-  the log for an admin to refund. these are the tested bounds.
+- crash recovery is loss-biased by design: a crash in a measured window
+  can lose an item or coins, but the tested fault model has no path that
+  duplicates either. the known windows: after a buy's delivery mark is
+  durable and before the buyer's inventory save is verified (the paid
+  item); after a listing's hand-clear is saved but before the listing
+  reaches disk (the listed item); after a cancel removes the listing
+  from escrow and before the returned item's save is verified (the
+  returned item); after a shop buy or /withdraw whose inventory save
+  cannot be verified, where the sale or withdrawal stands and a crash
+  may lose the delivered goods. each window logs loudly for an admin to
+  refund. these are the windows the suites exercise; they are not a
+  proof that no other window exists.
+- when an inventory save cannot be verified after a delivery, the code
+  never guesses: the payment stands, because refunding against goods
+  that may already be saved would duplicate them. admins compensate
+  from the log instead.
 - if a seller has spent the payment before recovery can refund it, the
   refund cannot be completed automatically: the journal is kept, trades
   are blocked, and the log asks for an admin.
 - save verification reads the saved player file back and compares the
   inventory. if minecraft's file layout changes in a future version the
   verification may not match; the code then logs once and degrades to a
-  plain forced save, and this guarantee no longer holds.
+  plain forced save, so it is not unconditionally fail-closed and the
+  guarantees above no longer hold in the degraded mode.
 - the built-in pack server is off by default and serves only the one pack
   file, rate-limited. for anything serious, host the pack externally and
   put the url in server.properties; the config documents how.
@@ -122,8 +133,9 @@ a jvm flag and never active in normal play.
   seen; existing stats never complete a challenge.
 - playtime challenges count minutes played since first join.
 - storage is json files, single-server. no cross-server sync, no database.
-- /withdraw of a huge amount in small denominations drops many item
-  entities; set denominations that fit your max balance.
+- /withdraw refuses when the coins cannot fit in your main inventory;
+  huge amounts in small denominations need many free slots. set
+  denominations that fit your max balance.
 - bedrock players use the same chest guis through geyser; there is no
   bedrock-native form ui. floodgate integration is logging only.
 - admin mistakes are corrected with /eco; the ledger records every change.
