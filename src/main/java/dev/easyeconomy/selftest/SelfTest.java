@@ -378,6 +378,24 @@ public final class SelfTest {
 					dev.easyeconomy.config.ConfigManager.load();
 				}
 
+				// null currencyBaseItem: the fallback must actually be applied
+				// to the config, and baseItem() must never throw on it
+				try {
+					Files.writeString(cfg, "{ \"currencyBaseItem\": null }");
+					dev.easyeconomy.config.ConfigManager.load();
+					var c3 = dev.easyeconomy.config.ConfigManager.get();
+					boolean paperFallback;
+					try {
+						paperFallback = dev.easyeconomy.currency.CurrencyItems.baseItem() == net.minecraft.world.item.Items.PAPER;
+					} catch (Exception e) {
+						paperFallback = false;
+					}
+					check("null currencyBaseItem falls back", "minecraft:paper".equals(c3.currencyBaseItem) && paperFallback);
+				} finally {
+					Files.writeString(cfg, good);
+					dev.easyeconomy.config.ConfigManager.load();
+				}
+
 			} catch (Exception e) {
 				throw new IllegalStateException("config validation stage failed", e);
 			}

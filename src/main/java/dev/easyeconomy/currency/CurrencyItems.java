@@ -24,7 +24,7 @@ public final class CurrencyItems {
 
 	public static Item baseItem() {
 		EeConfig config = ConfigManager.get();
-		Identifier id = Identifier.tryParse(config.currencyBaseItem);
+		Identifier id = config.currencyBaseItem == null ? null : Identifier.tryParse(config.currencyBaseItem);
 		Item item = id == null ? null : BuiltInRegistries.ITEM.getValue(id);
 		if (item == null || item == Items.AIR) {
 			return Items.PAPER;

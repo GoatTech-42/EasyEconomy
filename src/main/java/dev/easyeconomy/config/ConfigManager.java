@@ -95,6 +95,7 @@ public final class ConfigManager {
 		if (baseId == null || net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(baseId) == net.minecraft.world.item.Items.AIR) {
 			EasyEconomyMod.LOGGER.error("unknown currencyBaseItem ({}), coins fall back to {}",
 					config.currencyBaseItem, defaults.currencyBaseItem);
+			config.currencyBaseItem = defaults.currencyBaseItem;
 		}
 		if (config.packServer == null) {
 			config.packServer = new EeConfig.PackServer();
