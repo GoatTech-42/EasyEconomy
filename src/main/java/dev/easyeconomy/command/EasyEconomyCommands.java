@@ -168,17 +168,21 @@ public final class EasyEconomyCommands {
 			source.sendFailure(Component.literal("bad amount"));
 			return 0;
 		}
+		// remove the coins first, then credit: a crash may lose the coins but
+		// can never leave both the coins and the credit
+		ItemStack taken = held.copy();
+		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
 		EconomyCore.Result result = eco.core().deposit(player.getUUID(), value, "deposit");
-		if (result == EconomyCore.Result.OVER_MAX_BALANCE) {
-			source.sendFailure(Component.literal("that would put you over the max balance"));
-			return 0;
-		}
 		if (result != EconomyCore.Result.OK) {
-			source.sendFailure(Component.literal("bad amount"));
+			player.getInventory().add(taken);
+			if (!taken.isEmpty()) {
+				player.spawnAtLocation(source.getLevel(), taken);
+			}
+			source.sendFailure(Component.literal(result == EconomyCore.Result.OVER_MAX_BALANCE
+					? "that would put you over the max balance" : "bad amount"));
 			return 0;
 		}
 		eco.changed();
-		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
 		source.sendSuccess(() -> Component.literal("deposited " + eco.format(value)), false);
 		return 1;
 	}
@@ -203,21 +207,28 @@ public final class EasyEconomyCommands {
 			source.sendFailure(Component.literal("no currency items in your inventory"));
 			return 0;
 		}
-		EconomyCore.Result result = eco.core().deposit(player.getUUID(), total, "deposit-all");
-		if (result == EconomyCore.Result.OVER_MAX_BALANCE) {
-			source.sendFailure(Component.literal("that would put you over the max balance"));
-			return 0;
-		}
-		if (result != EconomyCore.Result.OK) {
-			source.sendFailure(Component.literal("bad amount"));
-			return 0;
-		}
-		eco.changed();
+		// same rule as /deposit: coins leave first, credit follows, and a
+		// rejected deposit returns every stack exactly as it was
+		java.util.List<ItemStack> takenAll = new java.util.ArrayList<>();
 		for (int i = 0; i < inv.getContainerSize(); i++) {
 			if (CurrencyItems.denominationOf(inv.getItem(i)) > 0) {
+				takenAll.add(inv.getItem(i).copy());
 				inv.setItem(i, ItemStack.EMPTY);
 			}
 		}
+		EconomyCore.Result result = eco.core().deposit(player.getUUID(), total, "deposit-all");
+		if (result != EconomyCore.Result.OK) {
+			for (ItemStack back : takenAll) {
+				player.getInventory().add(back);
+				if (!back.isEmpty()) {
+					player.spawnAtLocation(source.getLevel(), back);
+				}
+			}
+			source.sendFailure(Component.literal(result == EconomyCore.Result.OVER_MAX_BALANCE
+					? "that would put you over the max balance" : "bad amount"));
+			return 0;
+		}
+		eco.changed();
 		long deposited = total;
 		source.sendSuccess(() -> Component.literal("deposited " + eco.format(deposited)), false);
 		return 1;
@@ -246,6 +257,7 @@ public final class EasyEconomyCommands {
 			case IS_CURRENCY -> source.sendFailure(Component.literal("currency items can't be listed"));
 			case BAD_PRICE -> source.sendFailure(Component.literal("bad price"));
 			case TOO_MANY -> source.sendFailure(Component.literal("you have too many listings already"));
+			case FAILED -> source.sendFailure(Component.literal("listing failed safely - your item was returned"));
 			default -> source.sendFailure(Component.literal("can't list that"));
 		}
 		return 0;
@@ -254,10 +266,22 @@ public final class EasyEconomyCommands {
 	private static int sell(CommandSourceStack source, EconomyService eco, ShopService shop) throws CommandSyntaxException {
 		ServerPlayer player = source.getPlayerOrException();
 		ItemStack held = player.getMainHandItem();
-		ShopService.SellOutcome outcome = shop.sell(player, held);
+		if (held.isEmpty()) {
+			source.sendFailure(Component.literal("hold an item to sell it"));
+			return 0;
+		}
+		// item leaves the hand first, payout follows: never both at once
+		ItemStack taken = held.copy();
+		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+		ShopService.SellOutcome outcome = shop.sell(player, taken);
+		if (outcome.result() != ShopService.SellResult.OK) {
+			player.getInventory().add(taken);
+			if (!taken.isEmpty()) {
+				player.spawnAtLocation(source.getLevel(), taken);
+			}
+		}
 		switch (outcome.result()) {
 			case OK -> {
-				player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
 				source.sendSuccess(() -> Component.literal("sold " + outcome.count() + " for " + eco.format(outcome.value())), false);
 				return 1;
 			}

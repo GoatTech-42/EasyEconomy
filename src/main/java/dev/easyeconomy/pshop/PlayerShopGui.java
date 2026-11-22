@@ -101,13 +101,13 @@ public final class PlayerShopGui extends MenuGui {
 		}
 		Listing listing = shown.get(index);
 		if (mineOnly) {
-			if (service.cancel(player, player.level(), listing.id)) {
+			if (service.cancel(player, listing.id)) {
 				player.sendSystemMessage(Component.literal("listing cancelled, item returned"));
 			}
 			new PlayerShopGui(player, service, economy, true, page).open();
 			return;
 		}
-		PlayerShopService.BuyResult result = service.buy(player, player.level(), listing.id);
+		PlayerShopService.BuyResult result = service.buy(player, listing.id);
 		switch (result) {
 			case OK -> {
 				player.sendSystemMessage(Component.literal("bought from " + listing.sellerName + " for " + economy.format(listing.price)));
@@ -120,6 +120,7 @@ public final class PlayerShopGui extends MenuGui {
 			case OWN_LISTING -> player.sendSystemMessage(Component.literal("that's your listing - cancel it in my listings"));
 			case INSUFFICIENT_FUNDS -> player.sendSystemMessage(Component.literal("not enough " + dev.easyeconomy.config.ConfigManager.get().currencyPlural));
 			case SELLER_OVER_MAX -> player.sendSystemMessage(Component.literal("seller can't hold that much right now"));
+			case FAILED -> player.sendSystemMessage(Component.literal("sale failed safely - nothing was charged"));
 		}
 	}
 }

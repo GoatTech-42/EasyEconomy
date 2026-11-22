@@ -33,7 +33,7 @@ base { archivesName = "easyeconomy" }
 // The economy core is plain java with no minecraft imports, so it is tested
 // by a plain java main, not a framework test.
 def compileCoreTests = tasks.register('compileCoreTests', JavaCompile) {
-	source = files('tools/core-tests/TestEconomyCore.java')
+	source = files('tools/core-tests/TestEconomyCore.java', 'tools/core-tests/TestPShopTx.java')
 	classpath = sourceSets.main.output
 	destinationDirectory = layout.buildDirectory.dir('classes/coreTests')
 	dependsOn tasks.named('classes')
@@ -47,7 +47,14 @@ def testCoreTests = tasks.register('testCoreTests', JavaExec) {
 	classpath = files(compileCoreTests.flatMap { it.destinationDirectory }) + sourceSets.main.output
 	mainClass = 'TestEconomyCore'
 }
-tasks.named('check') { dependsOn testCoreTests }
+def testPShopTx = tasks.register('testPShopTx', JavaExec) {
+	group = 'verification'
+	description = 'Runs the player-shop transaction crash matrix.'
+	dependsOn compileCoreTests
+	classpath = files(compileCoreTests.flatMap { it.destinationDirectory }) + sourceSets.main.output
+	mainClass = 'TestPShopTx'
+}
+tasks.named('check') { dependsOn testCoreTests; dependsOn testPShopTx }
 
 loom {
 	runs {

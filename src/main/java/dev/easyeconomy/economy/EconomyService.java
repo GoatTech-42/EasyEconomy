@@ -76,7 +76,7 @@ public final class EconomyService {
 		}
 	}
 
-	public synchronized void save() {
+	public synchronized boolean save() {
 		try {
 			Map<String, Long> raw = new HashMap<>();
 			for (Map.Entry<UUID, Long> e : core.snapshot().entrySet()) {
@@ -85,8 +85,10 @@ public final class EconomyService {
 			ConfigManager.writeAtomic(accountsFile, GSON.toJson(raw));
 			dirty = false;
 			ticksSinceSave = 0;
+			return true;
 		} catch (Exception e) {
 			EasyEconomyMod.LOGGER.error("failed to save accounts", e);
+			return false;
 		}
 	}
 

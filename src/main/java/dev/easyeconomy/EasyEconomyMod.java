@@ -41,6 +41,7 @@ public final class EasyEconomyMod implements ModInitializer {
 			playerShop.load(server.registryAccess());
 		});
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			playerShop.setServer(server);
 			challenges.onServerStarted(server);
 			rebuildPack();
 		});
