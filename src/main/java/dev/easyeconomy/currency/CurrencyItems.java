@@ -53,6 +53,11 @@ public final class CurrencyItems {
 		if (stack.isEmpty()) {
 			return -1;
 		}
+		// the tag alone is not enough: it must also be on the currency base
+		// item, so a stray tagged item never counts as money
+		if (stack.getItem() != baseItem()) {
+			return -1;
+		}
 		CustomData data = stack.get(DataComponents.CUSTOM_DATA);
 		if (data == null) {
 			return -1;

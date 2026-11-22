@@ -21,7 +21,9 @@ public final class ShopGui extends MenuGui {
 	private final ShopConfig.Category category;
 
 	private ShopGui(ServerPlayer player, ShopService shop, EconomyService economy, ShopConfig.Category category) {
-		super(player, rowsFor(category == null ? shop.config().categories.size() : category.items.size()));
+		// +1 in the item view reserves the back slot, so a full page of
+		// items never hides it and every displayed slot is clickable
+		super(player, rowsFor(category == null ? shop.config().categories.size() : category.items.size() + 1));
 		this.shop = shop;
 		this.economy = economy;
 		this.category = category;
@@ -45,11 +47,15 @@ public final class ShopGui extends MenuGui {
 		if (category == null) {
 			int slot = 0;
 			for (ShopConfig.Category cat : shop.config().categories) {
+				if (slot >= container.getContainerSize()) {
+					break;
+				}
 				Item icon = itemOr(cat.icon, Items.CHEST);
 				set(slot++, MenuGui.display(icon, cat.name, List.of(cat.items.size() + " items", "click to open")));
 			}
 		} else {
-			for (int i = 0; i < category.items.size(); i++) {
+			int shown = Math.min(category.items.size(), container.getContainerSize() - 1);
+			for (int i = 0; i < shown; i++) {
 				ShopConfig.Entry entry = category.items.get(i);
 				set(i, entryButton(entry));
 			}
@@ -90,8 +96,10 @@ public final class ShopGui extends MenuGui {
 	@Override
 	protected void onClick(int slot, int button, ContainerInput input) {
 		if (category == null) {
+			// clicks on the player's own inventory rows carry slot ids past
+			// the gui container; never let those resolve to a category
 			List<ShopConfig.Category> cats = shop.config().categories;
-			if (slot >= 0 && slot < cats.size()) {
+			if (slot >= 0 && slot < cats.size() && slot < container.getContainerSize()) {
 				new ShopGui(player, shop, economy, cats.get(slot)).open();
 			}
 			return;
@@ -100,7 +108,7 @@ public final class ShopGui extends MenuGui {
 			openRoot(player, shop, economy);
 			return;
 		}
-		if (slot < 0 || slot >= category.items.size()) {
+		if (slot < 0 || slot >= category.items.size() || slot >= container.getContainerSize() - 1) {
 			return;
 		}
 		ShopConfig.Entry entry = category.items.get(slot);
