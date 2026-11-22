@@ -97,6 +97,9 @@ public final class ConfigManager {
 		  // coin denominations, biggest used first. must contain 1.
 		  "denominations": [1, 5, 10, 50, 100],
 
+		  // most listings one player can have open in the player shop
+		  "maxListingsPerPlayer": 10,
+
 		  // built-in resource pack web server. off by default.
 		  // it serves one static pack file at one fixed path
 		  // (/easyeconomy-pack.zip), nothing else, with per-client rate

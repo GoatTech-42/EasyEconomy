@@ -6,6 +6,7 @@ import dev.easyeconomy.economy.EconomyService;
 import dev.easyeconomy.pack.PackBuilder;
 import dev.easyeconomy.pack.PackServer;
 import dev.easyeconomy.shop.ShopService;
+import dev.easyeconomy.pshop.PlayerShopService;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -19,6 +20,7 @@ public final class EasyEconomyMod implements ModInitializer {
 
 	private static EconomyService economy;
 	private static ShopService shop;
+	private static PlayerShopService playerShop;
 	private static final PackServer packServer = new PackServer();
 	private static PackBuilder.Built pack;
 
@@ -27,9 +29,11 @@ public final class EasyEconomyMod implements ModInitializer {
 		ConfigManager.load();
 		economy = new EconomyService(ConfigManager.get());
 		shop = new ShopService(economy);
+		playerShop = new PlayerShopService(economy);
 		ServerLifecycleEvents.SERVER_STARTING.register(server -> {
 			economy.load();
 			shop.load();
+			playerShop.load(server.registryAccess());
 		});
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> rebuildPack());
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -42,7 +46,7 @@ public final class EasyEconomyMod implements ModInitializer {
 			shop.autosaveTick();
 		});
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) ->
-				EasyEconomyCommands.register(dispatcher, economy, shop));
+				EasyEconomyCommands.register(dispatcher, economy, shop, playerShop));
 		LOGGER.info("easyeconomy loaded");
 	}
 

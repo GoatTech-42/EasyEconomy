@@ -9,6 +9,7 @@ public final class EeConfig {
 	public int autosaveMinutes = 5;
 	public String currencyBaseItem = "minecraft:paper";
 	public java.util.List<Long> denominations = java.util.List.of(1L, 5L, 10L, 50L, 100L);
+	public int maxListingsPerPlayer = 10;
 	public PackServer packServer = new PackServer();
 
 	public static final class PackServer {

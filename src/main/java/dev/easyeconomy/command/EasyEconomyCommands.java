@@ -14,6 +14,8 @@ import dev.easyeconomy.currency.CurrencyMath;
 import dev.easyeconomy.EasyEconomyMod;
 import dev.easyeconomy.shop.ShopGui;
 import dev.easyeconomy.shop.ShopService;
+import dev.easyeconomy.pshop.PlayerShopGui;
+import dev.easyeconomy.pshop.PlayerShopService;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -26,7 +28,7 @@ import net.minecraft.world.item.ItemStack;
 
 public final class EasyEconomyCommands {
 
-	public static void register(CommandDispatcher<CommandSourceStack> dispatcher, EconomyService eco, ShopService shop) {
+	public static void register(CommandDispatcher<CommandSourceStack> dispatcher, EconomyService eco, ShopService shop, PlayerShopService playerShop) {
 		dispatcher.register(Commands.literal("balance")
 				.executes(ctx -> showBalance(ctx.getSource(), ctx.getSource().getPlayerOrException(), eco))
 				.then(balanceOtherChild(eco)));
@@ -65,6 +67,8 @@ public final class EasyEconomyCommands {
 				}));
 		dispatcher.register(Commands.literal("sell")
 				.executes(ctx -> sell(ctx.getSource(), eco, shop)));
+		registerPlayerShop(dispatcher, "playershop", eco, playerShop);
+		registerPlayerShop(dispatcher, "ps", eco, playerShop);
 		dispatcher.register(Commands.literal("easyeconomy")
 				.executes(ctx -> info(ctx.getSource(), eco))
 				.then(Commands.literal("reload")
@@ -210,6 +214,34 @@ public final class EasyEconomyCommands {
 		long deposited = total;
 		source.sendSuccess(() -> Component.literal("deposited " + eco.format(deposited)), false);
 		return 1;
+	}
+
+	private static void registerPlayerShop(CommandDispatcher<CommandSourceStack> dispatcher, String name, EconomyService eco, PlayerShopService playerShop) {
+		dispatcher.register(Commands.literal(name)
+				.executes(ctx -> {
+					PlayerShopGui.open(ctx.getSource().getPlayerOrException(), playerShop, eco);
+					return 1;
+				})
+				.then(Commands.literal("sell")
+						.then(Commands.argument("price", LongArgumentType.longArg(1))
+								.executes(ctx -> listForSale(ctx.getSource(), LongArgumentType.getLong(ctx, "price"), playerShop)))));
+	}
+
+	private static int listForSale(CommandSourceStack source, long price, PlayerShopService playerShop) throws CommandSyntaxException {
+		ServerPlayer player = source.getPlayerOrException();
+		PlayerShopService.ListResult result = playerShop.list(player, price);
+		switch (result) {
+			case OK -> {
+				source.sendSuccess(() -> Component.literal("listed for " + EasyEconomyMod.economy().format(price)), false);
+				return 1;
+			}
+			case NO_ITEM -> source.sendFailure(Component.literal("hold the item you want to sell"));
+			case IS_CURRENCY -> source.sendFailure(Component.literal("currency items can't be listed"));
+			case BAD_PRICE -> source.sendFailure(Component.literal("bad price"));
+			case TOO_MANY -> source.sendFailure(Component.literal("you have too many listings already"));
+			default -> source.sendFailure(Component.literal("can't list that"));
+		}
+		return 0;
 	}
 
 	private static int sell(CommandSourceStack source, EconomyService eco, ShopService shop) throws CommandSyntaxException {
