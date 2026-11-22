@@ -7,6 +7,7 @@ import dev.easyeconomy.pack.PackBuilder;
 import dev.easyeconomy.pack.PackServer;
 import dev.easyeconomy.shop.ShopService;
 import dev.easyeconomy.pshop.PlayerShopService;
+import dev.easyeconomy.challenge.ChallengeService;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -21,6 +22,7 @@ public final class EasyEconomyMod implements ModInitializer {
 	private static EconomyService economy;
 	private static ShopService shop;
 	private static PlayerShopService playerShop;
+	private static ChallengeService challenges;
 	private static final PackServer packServer = new PackServer();
 	private static PackBuilder.Built pack;
 
@@ -30,23 +32,29 @@ public final class EasyEconomyMod implements ModInitializer {
 		economy = new EconomyService(ConfigManager.get());
 		shop = new ShopService(economy);
 		playerShop = new PlayerShopService(economy);
+		challenges = new ChallengeService(economy);
 		ServerLifecycleEvents.SERVER_STARTING.register(server -> {
 			economy.load();
 			shop.load();
 			playerShop.load(server.registryAccess());
 		});
-		ServerLifecycleEvents.SERVER_STARTED.register(server -> rebuildPack());
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			challenges.onServerStarted(server);
+			rebuildPack();
+		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			packServer.stop();
 			shop.saveLimits();
+			challenges.saveProgress();
 			economy.save();
 		});
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			economy.autosaveTick();
 			shop.autosaveTick();
+			challenges.tick(server);
 		});
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) ->
-				EasyEconomyCommands.register(dispatcher, economy, shop, playerShop));
+				EasyEconomyCommands.register(dispatcher, economy, shop, playerShop, challenges));
 		LOGGER.info("easyeconomy loaded");
 	}
 
@@ -65,6 +73,7 @@ public final class EasyEconomyMod implements ModInitializer {
 	public static void reloadAll() {
 		economy.reload();
 		shop.load();
+		challenges.load();
 		rebuildPack();
 	}
 

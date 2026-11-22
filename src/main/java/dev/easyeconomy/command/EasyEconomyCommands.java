@@ -16,6 +16,8 @@ import dev.easyeconomy.shop.ShopGui;
 import dev.easyeconomy.shop.ShopService;
 import dev.easyeconomy.pshop.PlayerShopGui;
 import dev.easyeconomy.pshop.PlayerShopService;
+import dev.easyeconomy.challenge.ChallengeService;
+import dev.easyeconomy.challenge.ChallengesGui;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -28,7 +30,7 @@ import net.minecraft.world.item.ItemStack;
 
 public final class EasyEconomyCommands {
 
-	public static void register(CommandDispatcher<CommandSourceStack> dispatcher, EconomyService eco, ShopService shop, PlayerShopService playerShop) {
+	public static void register(CommandDispatcher<CommandSourceStack> dispatcher, EconomyService eco, ShopService shop, PlayerShopService playerShop, ChallengeService challenges) {
 		dispatcher.register(Commands.literal("balance")
 				.executes(ctx -> showBalance(ctx.getSource(), ctx.getSource().getPlayerOrException(), eco))
 				.then(balanceOtherChild(eco)));
@@ -68,6 +70,11 @@ public final class EasyEconomyCommands {
 		dispatcher.register(Commands.literal("sell")
 				.executes(ctx -> sell(ctx.getSource(), eco, shop)));
 		registerPlayerShop(dispatcher, "playershop", eco, playerShop);
+		dispatcher.register(Commands.literal("challenges")
+				.executes(ctx -> {
+					ChallengesGui.open(ctx.getSource().getPlayerOrException(), challenges, eco);
+					return 1;
+				}));
 		registerPlayerShop(dispatcher, "ps", eco, playerShop);
 		dispatcher.register(Commands.literal("easyeconomy")
 				.executes(ctx -> info(ctx.getSource(), eco))
