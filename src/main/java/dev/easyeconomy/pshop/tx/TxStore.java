@@ -79,4 +79,9 @@ public interface TxStore {
 	void warn(String msg);
 
 	void error(String msg);
+
+	// Tell the player a completed trade may not survive a crash. Default is
+	// a no-op so harnesses without a live player still work.
+	default void warnPlayer(UUID player, String msg) {
+	}
 }

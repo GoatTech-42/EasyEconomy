@@ -296,7 +296,7 @@ public final class SelfTest {
 					PlayerSaves.TestFault.SKIP_AND_UNVERIFIED);
 			ShopService.BuyResult result = shop.buy(a, a.level(), chosen, 1);
 			PlayerSaves.clearTestScript();
-			check("unverified shop delivery: sale stands", result == ShopService.BuyResult.OK);
+			check("unverified shop delivery: sale stands", result == ShopService.BuyResult.OK_SAVE_UNVERIFIED);
 			check("unverified shop delivery: balance debited", bal(a) == beforeBal - chosen.buyPrice);
 			check("unverified shop delivery: item kept", countItem(a, item) == beforeCount + 1);
 		});
@@ -329,6 +329,17 @@ public final class SelfTest {
 			check("cancel with unverified return save: escrow empty", EasyEconomyMod.playerShop().all().isEmpty());
 			check("cancel with unverified return save: item kept in memory",
 					countItem(b, Items.EMERALD) == emeraldsBefore + 3);
+		});
+		stages.put(260, () -> {
+			// QA round-4: an over-balance withdraw must refuse before anything
+			// proportional to the request is allocated. On unfixed code the
+			// first command exhausts the heap building coin stacks.
+			long before = bal(a);
+			as(a, "withdraw 9223372036854775807");
+			check("huge over-balance withdraw refused, balance untouched", bal(a) == before);
+			as(a, "withdraw " + (before + 1));
+			check("just-over-balance withdraw refused", bal(a) == before);
+			check("no coins materialized", coinValue(a) == 5); // the 5 from stage 258
 		});
 		stages.put(265, () -> {
 			EconomyService eco = EasyEconomyMod.economy();

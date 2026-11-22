@@ -334,6 +334,8 @@ public final class PlayerShopService implements TxStore {
 				EasyEconomyMod.LOGGER.error("pshop delivery overflow: voided {} for {}; the sale stands, an admin should refund",
 						stack, playerId);
 				stack.setCount(0);
+				player.sendSystemMessage(net.minecraft.network.chat.Component
+						.literal("part of your purchase could not be delivered; an admin has been notified"));
 			}
 		} catch (Exception e) {
 			EasyEconomyMod.LOGGER.error("pshop delivery failed, item lost", e);
@@ -343,6 +345,14 @@ public final class PlayerShopService implements TxStore {
 	@Override
 	public void warn(String msg) {
 		EasyEconomyMod.LOGGER.warn(msg);
+	}
+
+	@Override
+	public void warnPlayer(UUID playerId, String msg) {
+		ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+		if (player != null) {
+			player.sendSystemMessage(net.minecraft.network.chat.Component.literal(msg));
+		}
 	}
 
 	@Override

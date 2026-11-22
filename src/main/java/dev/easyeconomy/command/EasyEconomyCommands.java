@@ -151,23 +151,43 @@ public final class EasyEconomyCommands {
 		return false;
 	}
 
+	// Largest single /withdraw. Bigger holdings move in batches; the cap
+	// keeps a request from ever driving work proportional to its size.
+	private static final long MAX_WITHDRAW = 100_000_000L;
+
 	private static int withdraw(CommandSourceStack source, long amount, EconomyService eco) throws CommandSyntaxException {
 		ServerPlayer player = source.getPlayerOrException();
-		// build the coins first and make sure they can actually be carried:
-		// an overflow dropped at the feet could never be recalled safely if
-		// the inventory save afterwards cannot be verified
-		java.util.List<ItemStack> coins = new java.util.ArrayList<>();
-		for (java.util.Map.Entry<Long, Long> e : CurrencyMath.split(amount, CurrencyItems.denominations()).entrySet()) {
-			long toMake = e.getValue();
-			while (toMake > 0) {
-				int count = (int) Math.min(64, toMake);
-				toMake -= count;
-				coins.add(CurrencyItems.coin(e.getKey(), count));
-			}
+		// affordability and the cap come first: nothing proportional to the
+		// requested amount may be allocated before both pass
+		if (eco.core().balance(player.getUUID()) < amount) {
+			source.sendFailure(Component.literal("not enough " + ConfigManager.get().currencyPlural));
+			return 0;
 		}
-		if (!dev.easyeconomy.util.Inventories.canAbsorb(player.getInventory(), coins)) {
+		if (amount > MAX_WITHDRAW) {
+			source.sendFailure(Component.literal("too much at once; withdraw at most " + eco.format(MAX_WITHDRAW)));
+			return 0;
+		}
+		// one stack per denomination (bounded by the denomination count),
+		// and make sure the coins can actually be carried: chunks are only
+		// materialized once capacity is proven, and an overflow dropped at
+		// the feet could never be recalled safely if the inventory save
+		// afterwards cannot be verified
+		java.util.List<ItemStack> plan = new java.util.ArrayList<>();
+		for (java.util.Map.Entry<Long, Long> e : CurrencyMath.split(amount, CurrencyItems.denominations()).entrySet()) {
+			plan.add(CurrencyItems.coin(e.getKey(), e.getValue().intValue()));
+		}
+		if (!dev.easyeconomy.util.Inventories.canAbsorb(player.getInventory(), plan)) {
 			source.sendFailure(Component.literal("not enough inventory space"));
 			return 0;
+		}
+		java.util.List<ItemStack> coins = new java.util.ArrayList<>();
+		for (ItemStack wanted : plan) {
+			int toMake = wanted.getCount();
+			while (toMake > 0) {
+				int count = Math.min(64, toMake);
+				toMake -= count;
+				coins.add(wanted.copyWithCount(count));
+			}
 		}
 		EconomyCore.Result result = eco.core().withdraw(player.getUUID(), amount, "withdraw");
 		if (result != EconomyCore.Result.OK) {
@@ -186,6 +206,7 @@ public final class EasyEconomyCommands {
 			source.sendFailure(Component.literal("could not save your balance; nothing withdrawn"));
 			return 0;
 		}
+		boolean voided = false;
 		for (ItemStack stack : coins) {
 			player.getInventory().add(stack);
 			if (!stack.isEmpty()) {
@@ -195,6 +216,7 @@ public final class EasyEconomyCommands {
 				EasyEconomyMod.LOGGER.error("withdraw overflow: voided {} coins for {}; the withdrawal stands, an admin should refund",
 						CurrencyItems.denominationOf(stack) * stack.getCount(), player.getUUID());
 				stack.setCount(0);
+				voided = true;
 			}
 		}
 		if (!savePlayers(source, player)) {
@@ -203,6 +225,14 @@ public final class EasyEconomyCommands {
 			// a crash may lose the coins, never duplicate them
 			EasyEconomyMod.LOGGER.error("withdraw: coin save unverified for {}; the withdrawal stands, a crash now may lose the coins",
 					player.getUUID());
+			source.sendSuccess(() -> Component.literal("withdrew " + eco.format(amount)
+					+ ", but your inventory could not be saved safely; a crash may lose the coins - tell an admin if they vanish"), false);
+			return 1;
+		}
+		if (voided) {
+			source.sendSuccess(() -> Component.literal("withdrew " + eco.format(amount)
+					+ ", but some coins could not be carried; an admin has been notified"), false);
+			return 1;
 		}
 		source.sendSuccess(() -> Component.literal("withdrew " + eco.format(amount)), false);
 		return 1;

@@ -50,7 +50,14 @@ public final class PlayerSaves {
 
 	// Save every online player, then verify this player's file by read-back.
 	public static boolean saveAllVerified(MinecraftServer server, ServerPlayer player) {
-		TestFault fault = testScript.poll();
+		// the latch only fires while the selftest is enabled; a queued fault
+		// must never leak into a normal server if the property went away
+		TestFault fault = null;
+		if (SelfTest.enabled()) {
+			fault = testScript.poll();
+		} else if (!testScript.isEmpty()) {
+			testScript.clear();
+		}
 		if (fault == TestFault.SKIP_AND_UNVERIFIED) {
 			EasyEconomyMod.LOGGER.error("player save skipped by selftest fault injection");
 			return false;

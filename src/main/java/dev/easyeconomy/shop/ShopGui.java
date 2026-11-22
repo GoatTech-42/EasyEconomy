@@ -116,6 +116,8 @@ public final class ShopGui extends MenuGui {
 		ShopService.BuyResult result = shop.buy(player, player.level(), entry, count);
 		switch (result) {
 			case OK -> player.sendSystemMessage(Component.literal("bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + " for " + economy.format(entry.buyPrice * count)));
+			case OK_PARTIAL -> player.sendSystemMessage(Component.literal("bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + ", but some of it could not be delivered; an admin has been notified"));
+			case OK_SAVE_UNVERIFIED -> player.sendSystemMessage(Component.literal("bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + ", but your inventory could not be saved safely; a crash may lose it - tell an admin if it vanishes"));
 			case NO_PRICE -> player.sendSystemMessage(Component.literal("not for sale"));
 			case INSUFFICIENT_FUNDS -> player.sendSystemMessage(Component.literal("not enough " + dev.easyeconomy.config.ConfigManager.get().currencyPlural));
 			case LIMIT_REACHED -> player.sendSystemMessage(Component.literal("buy limit reached for this item"));
@@ -123,7 +125,8 @@ public final class ShopGui extends MenuGui {
 			case NO_ROOM -> player.sendSystemMessage(Component.literal("your inventory is full"));
 			default -> player.sendSystemMessage(Component.literal("can't buy that"));
 		}
-		if (result == ShopService.BuyResult.OK) {
+		if (result == ShopService.BuyResult.OK || result == ShopService.BuyResult.OK_PARTIAL
+				|| result == ShopService.BuyResult.OK_SAVE_UNVERIFIED) {
 			fill(); // refresh limit counts
 		}
 	}

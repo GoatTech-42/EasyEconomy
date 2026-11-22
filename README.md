@@ -56,15 +56,19 @@ disk (fsync, atomic rename) before moving on. delivery only happens after
 its journal mark is durable, so a refund can never meet an item that was
 handed out. forced player-data saves are verified by reading the saved
 file back - vanilla's save call swallows write failures and returns
-normally, so the read-back is the only proof - and a save that cannot be
-verified aborts the trade before the other side reaches disk. money moves
+normally, so the read-back is the only proof. a save that cannot be
+verified before the other side exists aborts the trade; a save that
+cannot be verified after delivery lets the payment stand, because
+refunding against goods that may already be durable would duplicate
+them - the player is warned and the log asks an admin to compensate. money moves
 are durable-or-rolled-back: if the flush fails, the in-memory move is
 reversed, so a live balance can never claim a payment the disk does not
 have. recovery reads ground truth (the durable balances, the escrow
 contents), keeps the journal until a refund is actually durable, and
 escalates to the log when a seller can no longer cover one. the same
 ordering holds for /deposit, /withdraw, /sell and the server shop:
-removal durable before creation durable, each side verified.
+removal durable before creation durable, each side verified, and the
+few post-delivery windows above always loss-biased.
 
 ## performance
 
@@ -95,7 +99,7 @@ every feature claim above is backed by a test you can run:
 | performance numbers | `gradle perfCore` re-runs them |
 
 the integration suite is `tools/selftest.sh`: it boots a real server, joins
-two fake players, runs 50 checks through the real command dispatcher and
+two fake players, runs 58 checks through the real command dispatcher and
 real menus, restarts, and verifies persistence with 6 more. it is gated on
 a jvm flag and never active in normal play.
 

@@ -172,6 +172,8 @@ public final class TxOps {
 		s.deliverItem(seller, listingJson);
 		if (!s.savePlayer(seller)) {
 			s.warn("pshop cancel: return save unverified for " + seller + "; a crash now may lose the returned item");
+			s.warnPlayer(seller,
+					"listing cancelled, but the returned item could not be saved safely; a crash may lose it - tell an admin if it vanishes");
 		}
 		clearQuietly(s);
 		return Outcome.OK;

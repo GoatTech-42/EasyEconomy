@@ -55,7 +55,7 @@ run_phase() {
   sleep 10
   cleanup
   LEADER=""
-  grep -E 'selftest ok|SELFTEST|Exception|Caused' run/logs/latest.log 2>/dev/null | head -50
+  grep -E 'selftest ok|SELFTEST|Exception|Caused' run/logs/latest.log 2>/dev/null
   # fail-closed: any SELFTEST FAIL anywhere in the log kills the phase,
   # even when the marker is also present
   if grep -q 'SELFTEST FAIL' run/logs/latest.log 2>/dev/null; then
