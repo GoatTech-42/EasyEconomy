@@ -8,6 +8,8 @@ import dev.easyeconomy.pack.PackServer;
 import dev.easyeconomy.shop.ShopService;
 import dev.easyeconomy.pshop.PlayerShopService;
 import dev.easyeconomy.challenge.ChallengeService;
+import dev.easyeconomy.util.Bedrock;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -41,6 +43,11 @@ public final class EasyEconomyMod implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			challenges.onServerStarted(server);
 			rebuildPack();
+		});
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			if (Bedrock.isBedrock(handler.player.getUUID())) {
+				LOGGER.info("bedrock player joined via geyser: {}", handler.player.getGameProfile().name());
+			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			packServer.stop();

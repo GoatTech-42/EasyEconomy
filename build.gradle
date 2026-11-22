@@ -2,10 +2,16 @@ plugins {
 	id "net.fabricmc.fabric-loom" version "${loom_version}"
 }
 
+repositories {
+	// floodgate api, used compile-only for geyser/bedrock detection
+	maven { url "https://repo.opencollab.dev/main/" }
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	compileOnly "org.geysermc.floodgate:api:2.2.5-SNAPSHOT"
 }
 
 processResources {

@@ -14,6 +14,16 @@ the resource pack is optional and only changes how things look.
 
 works for bedrock players joining through geyser: same commands, same guis.
 
+## geyser and bedrock players
+
+no extra setup: everything in this mod is vanilla chest guis, items and chat,
+which geyser already translates for bedrock clients. commands work the same.
+
+if you also run floodgate on the server, easyeconomy notices it (soft
+dependency, nothing else is used) and logs when a bedrock player joins, so
+admins can tell platforms apart in the log. floodgate is optional; without it
+the mod behaves identically and simply skips that log line.
+
 ## setup
 
 drop the jar into `mods/` next to fabric api, start the server once, then edit
