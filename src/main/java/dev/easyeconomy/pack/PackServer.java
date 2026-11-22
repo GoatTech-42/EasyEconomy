@@ -17,6 +17,10 @@ import java.util.concurrent.Executors;
 public final class PackServer {
 	public static final String PACK_PATH = "/easyeconomy-pack.zip";
 	private static final long MIN_INTERVAL_MS = 5_000;
+	// the rate-limit map is bounded: a scanner rotating source addresses
+	// must never grow it without limit. when it is full of fresh clients,
+	// everyone waits instead of the server running out of memory
+	private static final int MAX_TRACKED_IPS = 4096;
 
 	private HttpServer server;
 	private Path file;
@@ -37,6 +41,11 @@ public final class PackServer {
 					long now = System.currentTimeMillis();
 					Long last = lastServed.get(ip);
 					if (last != null && now - last < MIN_INTERVAL_MS) {
+						exchange.sendResponseHeaders(429, -1);
+						return;
+					}
+					lastServed.values().removeIf(t -> now - t >= MIN_INTERVAL_MS);
+					if (lastServed.size() >= MAX_TRACKED_IPS) {
 						exchange.sendResponseHeaders(429, -1);
 						return;
 					}

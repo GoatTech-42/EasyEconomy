@@ -369,6 +369,41 @@ public final class SelfTest {
 				throw new IllegalStateException("config validation stage failed", e);
 			}
 		});
+		stages.put(264, () -> {
+			// the pack endpoint end to end: one file only, rate-limited, and
+			// the rate-limit map stays bounded no matter how many source
+			// addresses show up
+			dev.easyeconomy.pack.PackServer packs = new dev.easyeconomy.pack.PackServer();
+			try {
+				java.nio.file.Path zip = EasyEconomyMod.economy().dataDir().resolve("selftest-pack.zip");
+				Files.write(zip, new byte[64]);
+				var cfg = new dev.easyeconomy.config.EeConfig.PackServer();
+				cfg.bind = "127.0.0.1";
+				cfg.port = 28180;
+				packs.start(cfg, zip);
+				String base = "http://127.0.0.1:28180";
+				check("pack first get 200", httpGet(base + dev.easyeconomy.pack.PackServer.PACK_PATH, "GET") == 200);
+				check("pack second get 429", httpGet(base + dev.easyeconomy.pack.PackServer.PACK_PATH, "GET") == 429);
+				check("pack wrong path 404", httpGet(base + "/nope", "GET") == 404);
+				check("pack post 405", httpGet(base + dev.easyeconomy.pack.PackServer.PACK_PATH, "POST") == 405);
+				java.lang.reflect.Field f = dev.easyeconomy.pack.PackServer.class.getDeclaredField("lastServed");
+				f.setAccessible(true);
+				@SuppressWarnings("unchecked")
+				Map<String, Long> seen = (Map<String, Long>) f.get(packs);
+				long now = System.currentTimeMillis();
+				synchronized (seen) {
+					seen.clear();
+					for (int i = 0; i < 4096; i++) {
+						seen.put("10." + (i / 65536) + "." + ((i / 256) % 256) + "." + (i % 256), now);
+					}
+				}
+				check("rate map full still 429", httpGet(base + dev.easyeconomy.pack.PackServer.PACK_PATH, "GET") == 429);
+			} catch (Exception e) {
+				throw new IllegalStateException("pack server stage failed", e);
+			} finally {
+				packs.stop();
+			}
+		});
 		stages.put(265, () -> {
 			EconomyService eco = EasyEconomyMod.economy();
 			check("accounts flush", eco.save());
@@ -469,6 +504,18 @@ public final class SelfTest {
 			}
 		}
 		return total;
+	}
+
+	private static int httpGet(String url, String method) throws Exception {
+		java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URI(url).toURL().openConnection();
+		conn.setRequestMethod(method);
+		conn.setConnectTimeout(2000);
+		conn.setReadTimeout(2000);
+		try {
+			return conn.getResponseCode();
+		} finally {
+			conn.disconnect();
+		}
 	}
 
 	private static void check(String name, boolean ok) {
