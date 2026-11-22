@@ -86,7 +86,7 @@ every feature claim above is backed by a test you can run:
 
 | claim | test |
 | --- | --- |
-| balances, /pay, /eco, limits, overflow safety | `gradle check`: 44 economy-core assertions, including an 8-thread transfer race proving money is conserved |
+| balances, /pay, /eco, limits, overflow safety | `gradle check`: 43 economy-core assertions, including an 8-thread transfer race proving money is conserved |
 | crash-safe player shops | `gradle check`: 179 transaction assertions - a crash injected at every step of list/buy/cancel, restart + recovery, forced write failures, recovery crashing mid-refund, refund flush failure with same-process retry, seller-unable-to-cover refund, silent player-save failure, full inventory, unreadable-journal gate |
 | currency forgery rejected | integration: anvil-renamed "coin" and tag-forged wrong-base item both rejected |
 | shop, sell, limits, guis | integration: real chest-menu clicks through every flow |
