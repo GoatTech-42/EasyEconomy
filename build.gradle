@@ -33,7 +33,7 @@ base { archivesName = "easyeconomy" }
 // The economy core is plain java with no minecraft imports, so it is tested
 // by a plain java main, not a framework test.
 def compileCoreTests = tasks.register('compileCoreTests', JavaCompile) {
-	source = files('tools/core-tests/TestEconomyCore.java', 'tools/core-tests/TestPShopTx.java')
+	source = files('tools/core-tests/TestEconomyCore.java', 'tools/core-tests/TestPShopTx.java', 'tools/core-tests/PerfCore.java')
 	classpath = sourceSets.main.output
 	destinationDirectory = layout.buildDirectory.dir('classes/coreTests')
 	dependsOn tasks.named('classes')
@@ -55,6 +55,14 @@ def testPShopTx = tasks.register('testPShopTx', JavaExec) {
 	mainClass = 'TestPShopTx'
 }
 tasks.named('check') { dependsOn testCoreTests; dependsOn testPShopTx }
+
+def perfCore = tasks.register('perfCore', JavaExec) {
+	group = 'verification'
+	description = 'Measures economy core throughput and save cost.'
+	dependsOn compileCoreTests
+	classpath = files(compileCoreTests.flatMap { it.destinationDirectory }) + sourceSets.main.output
+	mainClass = 'PerfCore'
+}
 
 loom {
 	runs {

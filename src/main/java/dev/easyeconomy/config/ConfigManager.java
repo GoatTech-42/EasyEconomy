@@ -59,30 +59,8 @@ public final class ConfigManager {
 		}
 	}
 
-	// Write-then-rename with fsync at each step, so a crash cannot leave a
-	// half-written file or lose the rename itself.
 	public static void writeAtomic(Path target, String content) throws IOException {
-		Files.createDirectories(target.getParent());
-		Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-		try (java.nio.channels.FileChannel ch = java.nio.channels.FileChannel.open(tmp,
-				java.nio.file.StandardOpenOption.WRITE,
-				java.nio.file.StandardOpenOption.CREATE,
-				java.nio.file.StandardOpenOption.TRUNCATE_EXISTING)) {
-			ch.write(java.nio.ByteBuffer.wrap(content.getBytes(StandardCharsets.UTF_8)));
-			ch.force(true);
-		}
-		try {
-			Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-		} catch (java.nio.file.AtomicMoveNotSupportedException e) {
-			Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-		}
-		// fsync the directory so the rename itself survives a crash; some
-		// filesystems refuse directory fsync, that is not fatal
-		try (java.nio.channels.FileChannel dir = java.nio.channels.FileChannel.open(target.getParent(),
-				java.nio.file.StandardOpenOption.READ)) {
-			dir.force(true);
-		} catch (IOException ignored) {
-		}
+		dev.easyeconomy.util.AtomicFiles.writeAtomic(target, content);
 	}
 
 	private static final String DEFAULT_CONFIG = """
