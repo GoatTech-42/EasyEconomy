@@ -99,7 +99,7 @@ every feature claim above is backed by a test you can run:
 | performance numbers | `gradle perfCore` re-runs them |
 
 the integration suite is `tools/selftest.sh`: it boots a real server, joins
-two fake players, runs 82 checks through the real command dispatcher and
+two fake players, runs 85 checks through the real command dispatcher and
 real menus, restarts, and verifies persistence with 6 more. it is gated on
 a jvm flag and never active in normal play.
 

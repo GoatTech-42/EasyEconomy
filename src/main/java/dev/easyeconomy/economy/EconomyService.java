@@ -2,13 +2,13 @@ package dev.easyeconomy.economy;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import dev.easyeconomy.EasyEconomyMod;
 import dev.easyeconomy.config.ConfigManager;
 import dev.easyeconomy.config.EeConfig;
 import net.fabricmc.loader.api.FabricLoader;
 
-import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,8 +19,6 @@ import java.util.UUID;
 // Minecraft-facing wrapper around EconomyCore: persistence, autosave, reload.
 public final class EconomyService {
 	private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
-	private static final Type ACCOUNTS_TYPE = new TypeToken<Map<String, Long>>() {
-	}.getType();
 
 	private final Path dataDir;
 	private final Path accountsFile;
@@ -57,10 +55,12 @@ public final class EconomyService {
 		try {
 			if (Files.exists(accountsFile)) {
 				String json = Files.readString(accountsFile, StandardCharsets.UTF_8);
-				Map<String, Long> raw = GSON.fromJson(json, ACCOUNTS_TYPE);
+				// whole-file syntax corruption throws here and takes the
+				// quarantine path; row-level corruption is handled per row
+				JsonObject raw = GSON.fromJson(json, JsonObject.class);
 				Map<UUID, Long> data = new HashMap<>();
 				if (raw != null) {
-					for (Map.Entry<String, Long> e : raw.entrySet()) {
+					for (Map.Entry<String, JsonElement> e : raw.entrySet()) {
 						UUID id;
 						try {
 							id = UUID.fromString(e.getKey());
@@ -68,10 +68,14 @@ public final class EconomyService {
 							EasyEconomyMod.LOGGER.warn("skipping bad account id {}", e.getKey());
 							continue;
 						}
-						// one malformed row must never wipe the rest of the file
-						Long value = e.getValue();
-						if (value == null) {
-							EasyEconomyMod.LOGGER.warn("skipping account {} with no balance", id);
+						// one malformed row must never wipe the rest of the file:
+						// decode the balance per row so a bad value is skipped
+						// without discarding its valid siblings
+						long value;
+						try {
+							value = e.getValue().getAsLong();
+						} catch (RuntimeException bad) {
+							EasyEconomyMod.LOGGER.warn("skipping account {} with malformed balance {}", id, e.getValue());
 							continue;
 						}
 						if (value < 0 || value > core.maxBalance()) {

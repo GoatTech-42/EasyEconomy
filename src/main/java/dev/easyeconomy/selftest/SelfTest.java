@@ -473,6 +473,18 @@ public final class SelfTest {
 				Files.writeString(accounts, good);
 				eco.load();
 				check("accounts restored", eco.core().snapshot().size() >= 2 && bal(a) == balA);
+
+				// a nonnumeric balance is row-level corruption: skip that row
+				// and keep its valid siblings, never quarantine the file
+				String rowHostile = "{\"" + a.getUUID() + "\": " + balA + ", \"" + b.getUUID() + "\": \"not-a-balance\"}";
+				Files.writeString(accounts, rowHostile);
+				eco.load();
+				check("hostile accounts: nonnumeric balance row skipped",
+						eco.core().snapshot().size() == 1 && bal(a) == balA);
+				check("hostile accounts: row corruption not quarantined", Files.exists(accounts));
+				Files.writeString(accounts, good);
+				eco.load();
+				check("accounts restored after row skip", eco.core().snapshot().size() >= 2 && bal(a) == balA);
 				// an unreadable file is quarantined (renamed aside, never
 				// overwritten) so the next autosave cannot destroy it
 				Files.writeString(accounts, "{ this is not json ");
