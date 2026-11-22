@@ -558,6 +558,80 @@ public final class SelfTest {
 			}
 			server.halt(false);
 		});
+		stages.put(261, () -> {
+			// --- villager trading: coins are not paper ---
+			net.minecraft.world.item.trading.MerchantOffer offer = new net.minecraft.world.item.trading.MerchantOffer(
+					new net.minecraft.world.item.trading.ItemCost(Items.PAPER, 5), new ItemStack(Items.EMERALD), 16, 1, 0.05f);
+			ItemStack coins5 = CurrencyItems.coin(1, 5);
+			check("paper still pays a trade", offer.satisfiedBy(new ItemStack(Items.PAPER, 5), ItemStack.EMPTY));
+			check("coin refused as trade payment", !offer.satisfiedBy(coins5, ItemStack.EMPTY));
+			check("coin never taken by a trade", !offer.take(coins5.copy(), ItemStack.EMPTY));
+
+			// --- player crafting: a coin in the grid blocks the result ---
+			net.minecraft.world.inventory.InventoryMenu inv = a.inventoryMenu;
+			inv.getSlot(1).set(new ItemStack(Items.PAPER));
+			inv.getSlot(2).set(new ItemStack(Items.GUNPOWDER));
+			inv.slotsChanged(inv.getSlot(1).container);
+			check("paper crafts normally", inv.getSlot(0).getItem().is(Items.FIREWORK_ROCKET));
+			inv.getSlot(1).set(CurrencyItems.coin(1, 1));
+			inv.slotsChanged(inv.getSlot(1).container);
+			check("coin blocks the crafting result", inv.getSlot(0).getItem().isEmpty());
+			inv.getSlot(1).set(ItemStack.EMPTY);
+			inv.getSlot(2).set(ItemStack.EMPTY);
+			inv.slotsChanged(inv.getSlot(1).container);
+
+			// --- cartography table: a coin cannot be used for map work ---
+			var cart = new net.minecraft.world.inventory.CartographyTableMenu(97, a.getInventory(),
+					net.minecraft.world.inventory.ContainerLevelAccess.create(
+							(net.minecraft.server.level.ServerLevel) a.level(), net.minecraft.core.BlockPos.ZERO));
+			ItemStack map = net.minecraft.world.item.MapItem.create(
+					(net.minecraft.server.level.ServerLevel) a.level(), 0, 0, (byte) 0, true, false);
+			cart.getSlot(net.minecraft.world.inventory.CartographyTableMenu.MAP_SLOT).set(map);
+			cart.getSlot(net.minecraft.world.inventory.CartographyTableMenu.ADDITIONAL_SLOT).set(new ItemStack(Items.PAPER, 2));
+			cart.slotsChanged(cart.container);
+			check("map work with plain paper", !cart.getSlot(net.minecraft.world.inventory.CartographyTableMenu.RESULT_SLOT).getItem().isEmpty());
+			cart.getSlot(net.minecraft.world.inventory.CartographyTableMenu.ADDITIONAL_SLOT).set(CurrencyItems.coin(1, 2));
+			cart.slotsChanged(cart.container);
+			check("coin blocks map work", cart.getSlot(net.minecraft.world.inventory.CartographyTableMenu.RESULT_SLOT).getItem().isEmpty());
+
+			// --- chest guis: the player's own inventory stays usable ---
+			ShopGui.openRoot(a, EasyEconomyMod.shop(), EasyEconomyMod.economy());
+			check("gui open for movement test", a.containerMenu instanceof net.minecraft.world.inventory.ChestMenu);
+			net.minecraft.world.inventory.ChestMenu gui = (net.minecraft.world.inventory.ChestMenu) a.containerMenu;
+			int chestSize = gui.getContainer().getContainerSize();
+			ItemStack firstButton = gui.getContainer().getItem(0).copy();
+			a.getInventory().setItem(0, new ItemStack(Items.DIRT, 64));
+			gui.clicked(chestSize + 27, 0, ContainerInput.QUICK_MOVE, a); // hotbar slot 0
+			check("shift-click moves inside the player inventory",
+					a.getInventory().getItem(9).is(Items.DIRT) && a.getInventory().getItem(0).isEmpty());
+			boolean chestClean = true;
+			for (int i = 0; i < chestSize; i++) {
+				if (gui.getContainer().getItem(i).is(Items.DIRT)) {
+					chestClean = false;
+				}
+			}
+			check("shift-click never enters the gui rows", chestClean);
+			gui.clicked(chestSize, 0, ContainerInput.QUICK_MOVE, a); // first main row slot back to the hotbar
+			check("shift-click back to the hotbar", a.getInventory().getItem(0).is(Items.DIRT) && a.getInventory().getItem(9).isEmpty());
+			gui.clicked(0, 0, ContainerInput.QUICK_CRAFT, a);
+			check("drag paint blocked in the gui rows",
+					ItemStack.isSameItemSameComponents(gui.getContainer().getItem(0), firstButton));
+			gui.clicked(0, 0, ContainerInput.PICKUP_ALL, a);
+			check("double-click gather blocked in the gui rows",
+					gui.getCarried().isEmpty() && ItemStack.isSameItemSameComponents(gui.getContainer().getItem(0), firstButton));
+			gui.clicked(0, 0, ContainerInput.PICKUP, a); // a real button click still works
+			check("button clicks still take nothing", a.containerMenu.getCarried().isEmpty());
+			a.closeContainer();
+			a.getInventory().clearContent();
+
+			// --- a completed challenge pops an advancement toast ---
+			boolean toastSeen = dev.easyeconomy.selftest.FakeConnection.SENT.stream()
+					.filter(pkt -> pkt instanceof net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket)
+					.map(pkt -> (net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket) pkt)
+					.anyMatch(pkt -> pkt.progress().keySet().stream().anyMatch(id ->
+							"easyeconomy".equals(id.getNamespace()) && "toast/zombie-slayer".equals(id.getPath())));
+			check("challenge completion toast sent", toastSeen);
+		});
 	}
 
 	// ---------- verify phase ----------

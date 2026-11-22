@@ -144,6 +144,11 @@ public final class ConfigManager {
 		  // most listings one player can have open in the player shop
 		  "maxListingsPerPlayer": 10,
 
+		  // show the pack's coin glyph before chest gui titles. enable only
+		  // when the resource pack is enforced in server.properties, or the
+		  // glyph shows as a box for players without the pack
+		  "guiTitleBadge": false,
+
 		  // built-in resource pack web server. off by default.
 		  // it serves one static pack file at one fixed path
 		  // (/easyeconomy-pack.zip), nothing else, with per-client rate

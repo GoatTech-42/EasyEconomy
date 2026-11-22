@@ -40,7 +40,7 @@ public final class ShopGui extends MenuGui {
 
 	@Override
 	protected Component title() {
-		return Component.literal(category == null ? "shop" : "shop - " + category.name);
+		return styledTitle(category == null ? "Shop" : "Shop - " + category.name);
 	}
 
 	private void fill() {
@@ -51,7 +51,7 @@ public final class ShopGui extends MenuGui {
 					break;
 				}
 				Item icon = itemOr(cat.icon, Items.CHEST);
-				set(slot++, MenuGui.display(icon, cat.name, List.of(cat.items.size() + " items", "click to open")));
+				set(slot++, MenuGui.display(icon, cat.name, List.of(cat.items.size() + " items.", "Click to open.")));
 			}
 		} else {
 			int shown = Math.min(category.items.size(), container.getContainerSize() - 1);
@@ -60,7 +60,7 @@ public final class ShopGui extends MenuGui {
 				set(i, entryButton(entry));
 			}
 			set(container.getContainerSize() - 1,
-					MenuGui.display(Items.ARROW, "back", List.of("back to categories")));
+					MenuGui.display(Items.ARROW, "Back", List.of("Back to categories.")));
 		}
 	}
 
@@ -68,17 +68,17 @@ public final class ShopGui extends MenuGui {
 		Item item = shop.itemOf(entry);
 		List<String> lore = new ArrayList<>();
 		if (entry.buyPrice > 0) {
-			lore.add("buy: " + economy.format(entry.buyPrice) + " each");
+			lore.add("Buy: " + economy.format(entry.buyPrice) + " each.");
 			int remaining = shop.limitRemaining(player.getUUID(), entry);
 			if (remaining >= 0) {
-				lore.add("limit left: " + remaining);
+				lore.add("Limit left: " + remaining + ".");
 			}
-			lore.add("click to buy 1, shift-click for 16");
+			lore.add("Click to buy 1, shift-click for 16.");
 		} else {
-			lore.add("not for sale");
+			lore.add("Not for sale.");
 		}
 		if (entry.sellPrice > 0) {
-			lore.add("sells to server for " + economy.format(entry.sellPrice));
+			lore.add("Sells to server for " + economy.format(entry.sellPrice) + ".");
 		}
 		return MenuGui.display(item, displayName(entry, item), lore);
 	}
@@ -115,16 +115,16 @@ public final class ShopGui extends MenuGui {
 		int count = input == net.minecraft.world.inventory.ContainerInput.QUICK_MOVE ? 16 : 1;
 		ShopService.BuyResult result = shop.buy(player, player.level(), entry, count);
 		switch (result) {
-			case OK -> player.sendSystemMessage(Component.literal("bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + " for " + economy.format(entry.buyPrice * count)));
-			case OK_PARTIAL -> player.sendSystemMessage(Component.literal("bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + ", but some of it could not be delivered; an admin has been notified"));
-			case OK_SAVE_UNVERIFIED -> player.sendSystemMessage(Component.literal("bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + ", but your inventory could not be saved safely; a crash may lose it - tell an admin if it vanishes"));
-			case OK_PARTIAL_SAVE_UNVERIFIED -> player.sendSystemMessage(Component.literal("bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + ", but some of it was lost in delivery and your inventory could not be saved safely; a crash may lose the rest - an admin has been notified"));
-			case NO_PRICE -> player.sendSystemMessage(Component.literal("not for sale"));
-			case INSUFFICIENT_FUNDS -> player.sendSystemMessage(Component.literal("not enough " + dev.easyeconomy.config.ConfigManager.get().currencyPlural));
-			case LIMIT_REACHED -> player.sendSystemMessage(Component.literal("buy limit reached for this item"));
-			case SAVE_FAILED -> player.sendSystemMessage(Component.literal("could not save your balance; nothing bought"));
-			case NO_ROOM -> player.sendSystemMessage(Component.literal("your inventory is full"));
-			default -> player.sendSystemMessage(Component.literal("can't buy that"));
+			case OK -> player.sendSystemMessage(Component.literal("Bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + " for " + economy.format(entry.buyPrice * count)));
+			case OK_PARTIAL -> player.sendSystemMessage(Component.literal("Bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + ", but some of it could not be delivered; an admin has been notified."));
+			case OK_SAVE_UNVERIFIED -> player.sendSystemMessage(Component.literal("Bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + ", but your inventory could not be saved safely; a crash may lose it - tell an admin if it vanishes."));
+			case OK_PARTIAL_SAVE_UNVERIFIED -> player.sendSystemMessage(Component.literal("Bought " + count + " x " + displayName(entry, shop.itemOf(entry)) + ", but some of it was lost in delivery and your inventory could not be saved safely; a crash may lose the rest - an admin has been notified."));
+			case NO_PRICE -> player.sendSystemMessage(Component.literal("Not for sale."));
+			case INSUFFICIENT_FUNDS -> player.sendSystemMessage(Component.literal("Not enough " + dev.easyeconomy.config.ConfigManager.get().currencyPlural + "."));
+			case LIMIT_REACHED -> player.sendSystemMessage(Component.literal("Buy limit reached for this item."));
+			case SAVE_FAILED -> player.sendSystemMessage(Component.literal("Could not save your balance; nothing bought."));
+			case NO_ROOM -> player.sendSystemMessage(Component.literal("Your inventory is full."));
+			default -> player.sendSystemMessage(Component.literal("Can't buy that."));
 		}
 		if (result == ShopService.BuyResult.OK || result == ShopService.BuyResult.OK_PARTIAL
 				|| result == ShopService.BuyResult.OK_SAVE_UNVERIFIED

@@ -31,7 +31,7 @@ public final class ChallengesGui extends MenuGui {
 
 	@Override
 	protected Component title() {
-		return Component.literal("challenges");
+		return styledTitle("Challenges");
 	}
 
 	private void fill() {
@@ -42,20 +42,20 @@ public final class ChallengesGui extends MenuGui {
 			if (!c.description.isEmpty()) {
 				lore.add(c.description);
 			}
-			lore.add("reward: " + economy.format(c.reward));
+			lore.add("Reward: " + economy.format(c.reward) + ".");
 			long pending = service.pendingOf(player.getUUID(), c.id);
 			if (pending > 0) {
-				lore.add("payment pending - make room in your balance");
+				lore.add("Payment pending - make room in your balance.");
 			}
 			if (service.isDone(player.getUUID(), c.id) && !c.repeatable) {
-				lore.add("completed");
+				lore.add("Completed.");
 			} else {
 				long cooldown = service.cooldownLeft(player.getUUID(), c.id);
 				if (cooldown > 0) {
-					lore.add("again in " + (cooldown / 3600) + "h " + (cooldown % 3600) / 60 + "m");
+					lore.add("Again in " + (cooldown / 3600) + "h " + (cooldown % 3600) / 60 + "m.");
 				} else if (!"advancement".equals(c.type)) {
 					int progress = Math.max(0, service.progressOf(player.getUUID(), c.id));
-					lore.add("progress: " + progress + "/" + service.goal(c));
+					lore.add("Progress: " + progress + "/" + service.goal(c) + ".");
 				}
 			}
 			set(i, MenuGui.display(service.iconOf(c), c.name, lore));

@@ -12,6 +12,7 @@
 	"license": "MIT",
 	"icon": "assets/easyeconomy/icon.png",
 	"environment": "server",
+	"mixins": [ "easyeconomy.mixins.json" ],
 	"entrypoints": {
 		"main": [ "dev.easyeconomy.EasyEconomyMod" ]
 	},

@@ -26,9 +26,11 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-// Builds easyeconomy-pack.zip: coin item models + textures + pack.mcmeta.
-// The zip goes in the server run dir so an admin can host it anywhere, and
-// the built-in PackServer can serve it when enabled.
+// Builds easyeconomy-pack.zip: coin item models + textures, the gui title
+// glyph (a coin badge for menu titles, enabled by guiTitleBadge in the
+// config) and pack.mcmeta. The zip goes in the server run dir so an admin
+// can host it anywhere, and the built-in PackServer can serve it when
+// enabled.
 public final class PackBuilder {
 	private static final int[] DENOM_COLORS = {
 			0xd8a03c, // gold
@@ -54,6 +56,10 @@ public final class PackBuilder {
 			if (icon != null) {
 				put(zip, "pack.png", icon);
 			}
+			put(zip, "assets/easyeconomy/font/gui.json", ("{\"providers\":[{\"type\":\"bitmap\","
+					+ "\"file\":\"easyeconomy:font/gui_title.png\",\"ascent\":8,\"height\":8,"
+					+ "\"chars\":[\"\\uE000\"]}]}").getBytes(StandardCharsets.UTF_8));
+			put(zip, "assets/easyeconomy/textures/font/gui_title.png", guiTitleTexture());
 			int colorIndex = 0;
 			for (long d : denoms) {
 				String name = "coin_" + d;
@@ -76,7 +82,7 @@ public final class PackBuilder {
 	private static byte[] packMeta() {
 		PackFormat format = DetectedVersion.BUILT_IN.packVersion(PackType.CLIENT_RESOURCES);
 		PackMetadataSection section = new PackMetadataSection(
-				Component.literal("easyeconomy coin models"),
+				Component.literal("easyeconomy coin and gui models"),
 				new InclusiveRange<>(format, format));
 		JsonElement encoded = PackMetadataSection.CLIENT_TYPE.codec()
 				.encodeStart(JsonOps.INSTANCE, section)
@@ -96,6 +102,25 @@ public final class PackBuilder {
 		zip.putNextEntry(new ZipEntry(name));
 		zip.write(data);
 		zip.closeEntry();
+	}
+
+	// Small gold coin used as the menu-title badge glyph in the gui font.
+	private static byte[] guiTitleTexture() throws Exception {
+		int size = 8;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		int gold = 0xffd8a03c, rim = 0xffa87424, hi = 0xffffd27a;
+		double c = (size - 1) / 2.0;
+		for (int y = 0; y < size; y++) {
+			for (int x = 0; x < size; x++) {
+				double d = Math.hypot(x - c, y - c);
+				if (d <= 3.6) {
+					img.setRGB(x, y, d > 2.6 ? rim : (x < 3 && y < 3 ? hi : gold));
+				}
+			}
+		}
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		ImageIO.write(img, "PNG", out);
+		return out.toByteArray();
 	}
 
 	private static byte[] coinTexture(int rgb) throws Exception {

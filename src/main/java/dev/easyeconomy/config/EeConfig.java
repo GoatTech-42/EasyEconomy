@@ -10,6 +10,10 @@ public final class EeConfig {
 	public String currencyBaseItem = "minecraft:paper";
 	public java.util.List<Long> denominations = java.util.List.of(1L, 5L, 10L, 50L, 100L);
 	public int maxListingsPerPlayer = 10;
+	// prefix chest gui titles with the pack's coin glyph. only turn this on
+	// when the resource pack is enforced on the server; without the pack
+	// the glyph char renders as a box
+	public boolean guiTitleBadge = false;
 	public PackServer packServer = new PackServer();
 
 	public static final class PackServer {

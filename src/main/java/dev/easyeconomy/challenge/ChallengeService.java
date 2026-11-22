@@ -152,9 +152,11 @@ public final class ChallengeService {
 			}
 			boolean done = player.getAdvancements().getOrStartProgress(holder).isDone();
 			String key = "adv:" + c.id;
-			boolean was = state.lastStats.getOrDefault(key, 0L) == 1;
-			state.lastStats.put(key, done ? 1L : 0L);
-			if (done && !was) {
+			Long previous = state.lastStats.put(key, done ? 1L : 0L);
+			if (previous == null) {
+				return; // baseline only: an advancement earned before the first poll never counts
+			}
+			if (done && previous != 1L) {
 				complete(player, state, c, now);
 			}
 			return;
@@ -251,7 +253,7 @@ public final class ChallengeService {
 			state.pendingRewards.remove(c.id);
 			dirty = true;
 			player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-					"challenge paid out: " + c.name + " (+" + economy.format(pending) + ")"));
+					"Challenge paid out: " + c.name + " (+" + economy.format(pending) + ")."));
 		}
 	}
 
@@ -266,8 +268,10 @@ public final class ChallengeService {
 			// the reward is earned either way; park it and pay when there is room
 			state.pendingRewards.merge(c.id, c.reward, Long::sum);
 			markDone(state, c, now);
+			ChallengeToast.show(player, c, iconOf(c), "Pays out once your balance has room.");
+			EasyEconomyMod.LOGGER.info("challenge {} completed by {} (reward pending, balance full)", c.id, player.getUUID());
 			player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-					"challenge \"" + c.name + "\" done, but your balance is full - it pays out once you make room"));
+					"Challenge \"" + c.name + "\" done, but your balance is full - it pays out once you make room."));
 			return;
 		}
 		if (result != EconomyCore.Result.OK) {
@@ -275,8 +279,10 @@ public final class ChallengeService {
 		}
 		economy.changed();
 		markDone(state, c, now);
+		ChallengeToast.show(player, c, iconOf(c), "+" + economy.format(c.reward) + ".");
+		EasyEconomyMod.LOGGER.info("challenge {} completed by {}", c.id, player.getUUID());
 		player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-				"challenge complete: " + c.name + " (+" + economy.format(c.reward) + ")"));
+				"Challenge complete: " + c.name + " (+" + economy.format(c.reward) + ")."));
 	}
 
 	private void markDone(PlayerState state, ChallengeConfig.Challenge c, long now) {
@@ -392,8 +398,8 @@ public final class ChallengeService {
 		  "challenges": [
 		    {
 		      "id": "uneasy-alliance",
-		      "name": "an uneasy alliance",
-		      "description": "rescue a ghast from the nether, bring it home, and kill it",
+		      "name": "An Uneasy Alliance",
+		      "description": "Rescue a Ghast from the Nether, bring it home, and kill it.",
 		      "icon": "minecraft:ghast_tear",
 		      "reward": 14,
 		      "type": "advancement",
@@ -401,8 +407,8 @@ public final class ChallengeService {
 		    },
 		    {
 		      "id": "wither-skull",
-		      "name": "wither hunter",
-		      "description": "obtain a wither skeleton skull",
+		      "name": "Wither Hunter",
+		      "description": "Obtain a Wither Skeleton Skull.",
 		      "icon": "minecraft:wither_skeleton_skull",
 		      "reward": 30,
 		      "type": "obtain",
@@ -413,8 +419,8 @@ public final class ChallengeService {
 		    },
 		    {
 		      "id": "zombie-slayer",
-		      "name": "zombie slayer",
-		      "description": "kill 100 zombies",
+		      "name": "Zombie Slayer",
+		      "description": "Kill 100 Zombies.",
 		      "icon": "minecraft:zombie_head",
 		      "reward": 50,
 		      "type": "kill",
@@ -425,8 +431,8 @@ public final class ChallengeService {
 		    },
 		    {
 		      "id": "diamond-miner",
-		      "name": "diamond miner",
-		      "description": "mine 32 diamond ore",
+		      "name": "Diamond Miner",
+		      "description": "Mine 32 Diamond Ore.",
 		      "icon": "minecraft:diamond_ore",
 		      "reward": 100,
 		      "type": "mine",

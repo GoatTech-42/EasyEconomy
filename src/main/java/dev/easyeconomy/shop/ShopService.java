@@ -314,7 +314,7 @@ public final class ShopService {
 		  // limits survive server restarts. leave it out for no limit.
 		  "categories": [
 		    {
-		      "name": "valuables",
+		      "name": "Valuables",
 		      "icon": "minecraft:diamond",
 		      "items": [
 		        { "item": "minecraft:diamond", "buyPrice": 100, "sellPrice": 40 },
@@ -322,7 +322,7 @@ public final class ShopService {
 		      ]
 		    },
 		    {
-		      "name": "blocks",
+		      "name": "Blocks",
 		      "icon": "minecraft:grass_block",
 		      "items": [
 		        { "item": "minecraft:stone", "buyPrice": 2 },

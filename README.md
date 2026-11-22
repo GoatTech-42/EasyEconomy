@@ -3,11 +3,17 @@
 a server-side fabric economy mod for minecraft 26.3. geyser friendly by design (see below).
 
 - player balances with /balance, /pay and admin /eco
-- physical currency items with a small built-in resource pack
+- physical currency items with a small built-in resource pack. coins are
+  money, not crafting material: they are refused in player crafting, the
+  crafter block, the cartography table and villager/wandering-trader trades
 - a server shop you fully configure: items, prices, per-player buy limits
 - player shops: list items for sale, buy and sell between players
-- server-made challenges with coin rewards (advancements, obtaining items, and more)
-- chest gui for everything, styled with vanilla item models and fonts
+- server-made challenges with coin rewards (advancements, obtaining items, and more).
+  completing one pops a vanilla advancement toast
+- chest gui for everything, styled with vanilla item models and fonts. your
+  own inventory stays fully usable while a menu is open. servers that enforce
+  the resource pack can set guiTitleBadge in the config for a coin badge in
+  every menu title
 
 needs fabric loader and fabric api on the server only. clients need nothing;
 the resource pack is optional and only changes how things look.

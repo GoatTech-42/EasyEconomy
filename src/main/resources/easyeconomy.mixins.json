@@ -1,0 +1,15 @@
+{
+	"required": true,
+	"package": "dev.easyeconomy.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"server": [
+		"CraftingGridMixin",
+		"CrafterBlockEntityMixin",
+		"CrafterMenuMixin",
+		"MerchantOfferMixin",
+		"CartographyTableMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

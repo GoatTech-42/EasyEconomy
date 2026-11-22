@@ -41,11 +41,24 @@ public final class CurrencyItems {
 		tag.put(TAG_KEY, inner);
 		stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
 		String name = denomination == 1
-				? config.currencySingular
-				: denomination + " " + config.currencyPlural;
+				? capitalize(config.currencySingular)
+				: denomination + " " + capitalize(config.currencyPlural);
 		stack.set(DataComponents.ITEM_NAME, Component.literal(name));
 		stack.set(DataComponents.ITEM_MODEL, Identifier.fromNamespaceAndPath("easyeconomy", "coin_" + denomination));
 		return stack;
+	}
+
+	// Display text starts upper-case in menus and item names.
+	static String capitalize(String text) {
+		if (text == null || text.isEmpty()) {
+			return "Coin";
+		}
+		return text.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + text.substring(1);
+	}
+
+	// True when the stack is a currency item (any denomination).
+	public static boolean isCurrency(ItemStack stack) {
+		return denominationOf(stack) > 0;
 	}
 
 	// Value of one item in the stack, or -1 when this is not a currency item.

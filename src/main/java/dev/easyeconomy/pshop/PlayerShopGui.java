@@ -43,7 +43,7 @@ public final class PlayerShopGui extends MenuGui {
 
 	@Override
 	protected Component title() {
-		return Component.literal(mineOnly ? "my listings" : "player shop");
+		return styledTitle(mineOnly ? "My Listings" : "Player Shop");
 	}
 
 	private void fill() {
@@ -57,11 +57,11 @@ public final class PlayerShopGui extends MenuGui {
 				set(i, ItemStack.EMPTY);
 			}
 		}
-		set(PREV, MenuGui.display(Items.ARROW, "previous page", List.of()));
-		set(NEXT, MenuGui.display(Items.ARROW, "next page", List.of()));
+		set(PREV, MenuGui.display(Items.ARROW, "Previous Page", List.of()));
+		set(NEXT, MenuGui.display(Items.ARROW, "Next Page", List.of()));
 		set(TOGGLE, MenuGui.display(mineOnly ? Items.CHEST : Items.ENDER_CHEST,
-				mineOnly ? "back to all listings" : "my listings",
-				List.of(mineOnly ? "" : "click to manage your listings")));
+				mineOnly ? "Back to All Listings" : "My Listings",
+				List.of(mineOnly ? "" : "Click to manage your listings.")));
 	}
 
 	private ItemStack button(Listing listing) {
@@ -70,9 +70,9 @@ public final class PlayerShopGui extends MenuGui {
 		if (stack.has(DataComponents.LORE)) {
 			lore.addAll(stack.get(DataComponents.LORE).lines());
 		}
-		lore.add(Component.literal("seller: " + listing.sellerName));
-		lore.add(Component.literal("price: " + economy.format(listing.price)));
-		lore.add(Component.literal(mineOnly ? "click to cancel and take back" : "click to buy"));
+		lore.add(Component.literal("Seller: " + listing.sellerName + "."));
+		lore.add(Component.literal("Price: " + economy.format(listing.price) + "."));
+		lore.add(Component.literal(mineOnly ? "Click to cancel and take back." : "Click to buy."));
 		stack.set(DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(lore));
 		return stack;
 	}
@@ -102,7 +102,7 @@ public final class PlayerShopGui extends MenuGui {
 		Listing listing = shown.get(index);
 		if (mineOnly) {
 			if (service.cancel(player, listing.id)) {
-				player.sendSystemMessage(Component.literal("listing cancelled, item returned"));
+				player.sendSystemMessage(Component.literal("Listing cancelled, item returned."));
 			}
 			new PlayerShopGui(player, service, economy, true, page).open();
 			return;
@@ -110,18 +110,18 @@ public final class PlayerShopGui extends MenuGui {
 		PlayerShopService.BuyResult result = service.buy(player, listing.id);
 		switch (result) {
 			case OK -> {
-				player.sendSystemMessage(Component.literal("bought from " + listing.sellerName + " for " + economy.format(listing.price)));
+				player.sendSystemMessage(Component.literal("Bought from " + listing.sellerName + " for " + economy.format(listing.price) + "."));
 				new PlayerShopGui(player, service, economy, false, page).open();
 			}
 			case NOT_FOUND -> {
-				player.sendSystemMessage(Component.literal("that listing is gone"));
+				player.sendSystemMessage(Component.literal("That listing is gone."));
 				new PlayerShopGui(player, service, economy, false, page).open();
 			}
-			case OWN_LISTING -> player.sendSystemMessage(Component.literal("that's your listing - cancel it in my listings"));
-			case INSUFFICIENT_FUNDS -> player.sendSystemMessage(Component.literal("not enough " + dev.easyeconomy.config.ConfigManager.get().currencyPlural));
-			case SELLER_OVER_MAX -> player.sendSystemMessage(Component.literal("seller can't hold that much right now"));
-			case NO_ROOM -> player.sendSystemMessage(Component.literal("your inventory is full"));
-			case FAILED -> player.sendSystemMessage(Component.literal("sale failed safely - nothing was charged"));
+			case OWN_LISTING -> player.sendSystemMessage(Component.literal("That's your listing - cancel it in My Listings."));
+			case INSUFFICIENT_FUNDS -> player.sendSystemMessage(Component.literal("Not enough " + dev.easyeconomy.config.ConfigManager.get().currencyPlural + "."));
+			case SELLER_OVER_MAX -> player.sendSystemMessage(Component.literal("Seller can't hold that much right now."));
+			case NO_ROOM -> player.sendSystemMessage(Component.literal("Your inventory is full."));
+			case FAILED -> player.sendSystemMessage(Component.literal("Sale failed safely - nothing was charged."));
 		}
 	}
 }

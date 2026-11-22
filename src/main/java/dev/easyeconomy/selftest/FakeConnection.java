@@ -17,6 +17,9 @@ import java.net.SocketAddress;
 // fake ServerPlayer can join, run commands and click menus with no client.
 final class FakeConnection extends Connection {
 	private static final SocketAddress LOCAL = new InetSocketAddress("127.0.0.1", 25565);
+	// every packet the server tried to send to any fake player, for
+	// selftest assertions (the challenge toast goes out this way)
+	static final java.util.List<Packet<?>> SENT = new java.util.ArrayList<>();
 	private PacketListener listener;
 
 	FakeConnection() {
@@ -39,14 +42,17 @@ final class FakeConnection extends Connection {
 
 	@Override
 	public void send(Packet<?> packet) {
+		SENT.add(packet);
 	}
 
 	@Override
 	public void send(Packet<?> packet, ChannelFutureListener futureListener) {
+		SENT.add(packet);
 	}
 
 	@Override
 	public void send(Packet<?> packet, ChannelFutureListener futureListener, boolean flush) {
+		SENT.add(packet);
 	}
 
 	@Override
