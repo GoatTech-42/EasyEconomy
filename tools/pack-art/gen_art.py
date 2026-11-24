@@ -120,7 +120,7 @@ def gen_gui(rows):
     # light pill behind the hard-coded dark "Inventory" label so it stays
     # readable on the dark skin (label text top-left is at (8, 20+18*rows))
     label_y = 20 + 18 * rows
-    pill_rect(px, 5, label_y - 2, 56, 11, PILL, PILL_EDGE)
+    pill_rect(px, 7, label_y - 2, 52, 11, PILL, PILL_EDGE)
     return img
 
 
@@ -185,7 +185,7 @@ def gen_vanilla_container():
     for k in range(9):
         paint_cell(px, 7 + 18 * k, 197)
     # light pill behind the dark "Inventory" label (label top-left (8, 128))
-    pill_rect(px, 5, 126, 56, 11, PILL, PILL_EDGE)
+    pill_rect(px, 7, 126, 52, 11, PILL, PILL_EDGE)
     # section frame at the bottom of the inventory region
     for x in range(1, 175):
         px[x, 221] = rgba(FRAME)
