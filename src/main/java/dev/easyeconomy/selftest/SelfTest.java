@@ -187,6 +187,40 @@ public final class SelfTest {
 			click(a, 1, ContainerInput.PICKUP); // blocks category
 			click(a, 0, ContainerInput.QUICK_MOVE); // stone x16 @32
 			check("shift buy 16 stone", bal(a) == 4978 && countItem(a, Items.STONE) == 16);
+			a.closeContainer();
+		});
+		stages.put(70, () -> {
+			// regression: the shop root reserves its last slot for the balance
+			// readout. at 54 categories (a full 6-row page) the last slot must
+			// still show "Balance" and clicking it must not open the 54th
+			// category - label and click routing agree
+			ShopService shop = EasyEconomyMod.shop();
+			dev.easyeconomy.shop.ShopConfig big = new dev.easyeconomy.shop.ShopConfig();
+			for (int i = 0; i < 54; i++) {
+				dev.easyeconomy.shop.ShopConfig.Category cat = new dev.easyeconomy.shop.ShopConfig.Category();
+				cat.name = "cat" + i;
+				dev.easyeconomy.shop.ShopConfig.Entry entry = new dev.easyeconomy.shop.ShopConfig.Entry();
+				entry.item = "minecraft:stone";
+				entry.buyPrice = 1;
+				cat.items.add(entry);
+				big.categories.add(cat);
+			}
+			dev.easyeconomy.shop.ShopConfig original = shop.config();
+			setShopConfig(shop, big);
+			try {
+				ShopGui.openRoot(a, shop, EasyEconomyMod.economy());
+				int last = a.containerMenu.slots.size() - 36 - 1;
+				check("54-category root fills a 6-row page", last == 53);
+				check("balance slot shows the balance readout", slotName(a, last).equals("Balance"));
+				click(a, last, ContainerInput.PICKUP);
+				check("balance click stays on the root menu",
+						a.containerMenu.slots.size() - 36 == 54 && slotName(a, last).equals("Balance"));
+				click(a, 0, ContainerInput.PICKUP);
+				check("category slot still opens its category", a.containerMenu.slots.size() - 36 != 54);
+			} finally {
+				setShopConfig(shop, original);
+				a.closeContainer();
+			}
 		});
 		stages.put(80, () -> {
 			a.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, new ItemStack(Items.DIAMOND, 3));
@@ -742,6 +776,25 @@ public final class SelfTest {
 
 	private static void click(ServerPlayer player, int slot, ContainerInput input) {
 		player.containerMenu.clicked(slot, 0, input, player);
+	}
+
+	// display name of the stack in a chest-menu slot, or "" when empty
+	private static String slotName(ServerPlayer player, int slot) {
+		ItemStack stack = player.containerMenu.slots.get(slot).getItem();
+		Component name = stack.get(DataComponents.CUSTOM_NAME);
+		return name == null ? "" : name.getString();
+	}
+
+	// the shop config has no setter; the 54-category regression swaps it via
+	// reflection and always restores the original afterwards
+	private static void setShopConfig(ShopService shop, dev.easyeconomy.shop.ShopConfig config) {
+		try {
+			java.lang.reflect.Field field = ShopService.class.getDeclaredField("config");
+			field.setAccessible(true);
+			field.set(shop, config);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException(e);
+		}
 	}
 
 	private static long coinValue(ServerPlayer player) {

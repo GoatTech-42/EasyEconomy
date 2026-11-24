@@ -13,9 +13,12 @@ a server-side fabric economy mod for minecraft 26.3. geyser friendly by design (
 - chest gui for everything, styled with vanilla item models and fonts. your
   own inventory stays fully usable while a menu is open. servers that enforce
   the resource pack can set guiTheme in the config for the full dark menu
-  skin: drawn backgrounds, pack icons on menu buttons, and a matching dark
-  look for plain chests. bedrock players through geyser always get the
-  plain vanilla look (their client can't draw java font glyphs)
+  skin: drawn backgrounds, pack icons on menu buttons. the legacy
+  guiTitleBadge flag is kept as an alias and now enables the same full
+  theme. while the pack is on, plain chests and barrels also draw in the
+  dark style (the menus' slot cutouts show through to it). bedrock players
+  through geyser always get the plain vanilla look (their client can't draw
+  java font glyphs)
 
 needs fabric loader and fabric api on the server only. clients need nothing;
 the resource pack is optional and only changes how things look.

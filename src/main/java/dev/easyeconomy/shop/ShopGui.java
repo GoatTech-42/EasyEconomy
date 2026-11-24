@@ -22,8 +22,9 @@ public final class ShopGui extends MenuGui {
 
 	private ShopGui(ServerPlayer player, ShopService shop, EconomyService economy, ShopConfig.Category category) {
 		// +1 in the item view reserves the back slot, so a full page of
-		// items never hides it and every displayed slot is clickable
-		super(player, rowsFor(category == null ? shop.config().categories.size() : category.items.size() + 1));
+		// items never hides it and every displayed slot is clickable. the
+		// root view also reserves one slot, for the balance readout
+		super(player, rowsFor(category == null ? shop.config().categories.size() + 1 : category.items.size() + 1));
 		this.shop = shop;
 		this.economy = economy;
 		this.category = category;
@@ -47,7 +48,9 @@ public final class ShopGui extends MenuGui {
 		if (category == null) {
 			int slot = 0;
 			for (ShopConfig.Category cat : shop.config().categories) {
-				if (slot >= container.getContainerSize()) {
+				// the last slot is reserved for the balance readout; categories
+				// past capacity are simply not shown (same as before)
+				if (slot >= container.getContainerSize() - 1) {
 					break;
 				}
 				Item icon = itemOr(cat.icon, Items.CHEST);
@@ -100,9 +103,10 @@ public final class ShopGui extends MenuGui {
 	protected void onClick(int slot, int button, ContainerInput input) {
 		if (category == null) {
 			// clicks on the player's own inventory rows carry slot ids past
-			// the gui container; never let those resolve to a category
+			// the gui container; never let those resolve to a category. the
+			// last slot is the balance readout, which never opens a category
 			List<ShopConfig.Category> cats = shop.config().categories;
-			if (slot >= 0 && slot < cats.size() && slot < container.getContainerSize()) {
+			if (slot >= 0 && slot < cats.size() && slot < container.getContainerSize() - 1) {
 				new ShopGui(player, shop, economy, cats.get(slot)).open();
 			}
 			return;
