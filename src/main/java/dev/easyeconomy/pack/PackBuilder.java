@@ -121,7 +121,11 @@ public final class PackBuilder {
 	}
 
 	private static void put(ZipOutputStream zip, String name, byte[] data) throws Exception {
-		zip.putNextEntry(new ZipEntry(name));
+		ZipEntry entry = new ZipEntry(name);
+		// fixed timestamps keep the zip byte-identical across server boots,
+		// so the logged sha1 stays valid in server.properties
+		entry.setTime(0L);
+		zip.putNextEntry(entry);
 		zip.write(data);
 		zip.closeEntry();
 	}

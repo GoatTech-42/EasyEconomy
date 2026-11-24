@@ -120,6 +120,7 @@ public abstract class MenuGui {
 									net.minecraft.resources.Identifier.fromNamespaceAndPath("easyeconomy", "gui")))
 							.withColor(ChatFormatting.WHITE).withItalic(false))
 					.append(Component.literal(text).withStyle(style -> style
+							.withFont(net.minecraft.network.chat.FontDescription.DEFAULT)
 							.withItalic(false).withColor(ChatFormatting.WHITE).withBold(true)));
 		}
 		return Component.literal(text)
