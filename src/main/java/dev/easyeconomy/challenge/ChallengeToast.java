@@ -29,11 +29,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-// Shows a challenge completion as a vanilla advancement toast. A
-// throwaway client-side advancement is sent already done (that is what
-// makes the client pop the toast), then removed a few ticks later so the
-// advancement screen never keeps it. Nothing here touches the player's
-// real advancement data.
+// Shows a challenge completion as a vanilla advancement toast, using the
+// golden CHALLENGE frame (the client prints "Challenge Complete!" and
+// plays the fanfare). A throwaway client-side advancement is sent already
+// done (that is what makes the client pop the toast), then removed a few
+// ticks later so the advancement screen never keeps it. Nothing here
+// touches the player's real advancement data.
 public final class ChallengeToast {
 	private static final String CRITERION = "done";
 	private static final int REMOVE_AFTER_TICKS = 10;
@@ -59,9 +60,9 @@ public final class ChallengeToast {
 		DisplayInfo display = new DisplayInfo(
 				ItemStackTemplate.fromNonEmptyStack(new ItemStack(icon)),
 				Component.literal(challenge.name),
-				Component.literal("Challenge complete. " + rewardText),
+				Component.literal(rewardText),
 				Optional.empty(),
-				AdvancementType.TASK,
+				AdvancementType.CHALLENGE,
 				true, false, false);
 		Map<String, Criterion<?>> criteria = new HashMap<>();
 		criteria.put(CRITERION, new Criterion<>(CriteriaTriggers.IMPOSSIBLE, new ImpossibleTrigger.TriggerInstance()));

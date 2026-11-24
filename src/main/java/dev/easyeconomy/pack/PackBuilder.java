@@ -13,9 +13,6 @@ import net.minecraft.server.packs.metadata.pack.PackFormat;
 import net.minecraft.server.packs.metadata.pack.PackMetadataSection;
 import net.minecraft.util.InclusiveRange;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,22 +23,20 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-// Builds easyeconomy-pack.zip: coin item models + textures, the gui title
-// glyph (a coin badge for menu titles, enabled by guiTitleBadge in the
-// config) and pack.mcmeta. The zip goes in the server run dir so an admin
-// can host it anywhere, and the built-in PackServer can serve it when
-// enabled.
+// Builds easyeconomy-pack.zip from the crafted textures and models under
+// src/main/resources/pack (made by tools/pack-art/gen_art.py): the dark gui
+// skins drawn over chest menus through a font glyph, coin and menu-icon
+// item models, the title badge glyph, and pack.mcmeta. Denominations are
+// config-driven, so one small items/coin_<value>.json per denomination is
+// generated here and pointed at the tier texture for its rank.
+//
+// The zip goes in the server run dir so an admin can host it anywhere, and
+// the built-in PackServer can serve it when enabled.
 public final class PackBuilder {
-	private static final int[] DENOM_COLORS = {
-			0xd8a03c, // gold
-			0xc0c0c0, // silver
-			0xb87333, // copper
-			0x50c878, // emerald
-			0x4fc3f7, // diamond
-			0xc084fc, // amethyst
-			0xf472b6, // rose
-			0xfde047, // bright gold
-	};
+	private static final int MAX_TIER = 7;
+
+	// everything below assets/easyeconomy/, copied from /pack/ verbatim
+	private static final String[] STATIC_FILES = staticFiles();
 
 	public record Built(Path zip, String sha1) {
 	}
@@ -56,21 +51,24 @@ public final class PackBuilder {
 			if (icon != null) {
 				put(zip, "pack.png", icon);
 			}
-			put(zip, "assets/easyeconomy/font/gui.json", ("{\"providers\":[{\"type\":\"bitmap\","
-					+ "\"file\":\"easyeconomy:font/gui_title.png\",\"ascent\":8,\"height\":8,"
-					+ "\"chars\":[\"\\uE000\"]}]}").getBytes(StandardCharsets.UTF_8));
-			put(zip, "assets/easyeconomy/textures/font/gui_title.png", guiTitleTexture());
-			int colorIndex = 0;
+			for (String file : STATIC_FILES) {
+				byte[] data = resourceBytes("/pack/" + file);
+				if (data == null) {
+					throw new IllegalStateException("missing bundled pack file: /pack/" + file);
+				}
+				// files under pack/minecraft/ override vanilla assets; the rest
+				// live in the mod's own namespace
+				String target = file.startsWith("minecraft/")
+						? "assets/" + file
+						: "assets/easyeconomy/" + file;
+				put(zip, target, data);
+			}
+			int tier = 0;
 			for (long d : denoms) {
-				String name = "coin_" + d;
-				put(zip, "assets/easyeconomy/items/" + name + ".json",
-						("{\"model\":{\"type\":\"minecraft:model\",\"model\":\"easyeconomy:item/" + name + "\"}}")
+				String model = "easyeconomy:item/coin_tier" + Math.min(tier++, MAX_TIER);
+				put(zip, "assets/easyeconomy/items/coin_" + d + ".json",
+						("{\"model\":{\"type\":\"minecraft:model\",\"model\":\"" + model + "\"}}")
 								.getBytes(StandardCharsets.UTF_8));
-				put(zip, "assets/easyeconomy/models/item/" + name + ".json",
-						("{\"parent\":\"minecraft:item/generated\",\"textures\":{\"layer0\":\"easyeconomy:item/" + name + "\"}}")
-								.getBytes(StandardCharsets.UTF_8));
-				put(zip, "assets/easyeconomy/textures/item/" + name + ".png",
-						coinTexture(DENOM_COLORS[colorIndex++ % DENOM_COLORS.length]));
 			}
 		}
 		Files.move(tmp, outZip, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -79,10 +77,34 @@ public final class PackBuilder {
 		return new Built(outZip, sha1);
 	}
 
+	private static String[] staticFiles() {
+		java.util.List<String> files = new java.util.ArrayList<>();
+		files.add("font/gui.json");
+		files.add("textures/font/gui_title.png");
+		// dark reskin of the vanilla generic container texture: it shows
+		// through the gui skin's transparent slot cutouts and restyles plain
+		// chests to match while the pack is on
+		files.add("minecraft/textures/gui/container/generic_54.png");
+		String[] guiIcons = {"back", "nav_prev", "nav_next", "listings_all", "listings_mine", "balance"};
+		for (int rows = 1; rows <= 6; rows++) {
+			files.add("textures/font/gui_bg_" + rows + ".png");
+		}
+		for (int tier = 0; tier <= MAX_TIER; tier++) {
+			files.add("textures/item/coin_tier" + tier + ".png");
+			files.add("models/item/coin_tier" + tier + ".json");
+		}
+		for (String icon : guiIcons) {
+			files.add("textures/item/gui/" + icon + ".png");
+			files.add("models/item/gui/" + icon + ".json");
+			files.add("items/gui/" + icon + ".json");
+		}
+		return files.toArray(new String[0]);
+	}
+
 	private static byte[] packMeta() {
 		PackFormat format = DetectedVersion.BUILT_IN.packVersion(PackType.CLIENT_RESOURCES);
 		PackMetadataSection section = new PackMetadataSection(
-				Component.literal("easyeconomy coin and gui models"),
+				Component.literal("easyeconomy gui skins and coin models"),
 				new InclusiveRange<>(format, format));
 		JsonElement encoded = PackMetadataSection.CLIENT_TYPE.codec()
 				.encodeStart(JsonOps.INSTANCE, section)
@@ -102,46 +124,5 @@ public final class PackBuilder {
 		zip.putNextEntry(new ZipEntry(name));
 		zip.write(data);
 		zip.closeEntry();
-	}
-
-	// Small gold coin used as the menu-title badge glyph in the gui font.
-	private static byte[] guiTitleTexture() throws Exception {
-		int size = 8;
-		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-		int gold = 0xffd8a03c, rim = 0xffa87424, hi = 0xffffd27a;
-		double c = (size - 1) / 2.0;
-		for (int y = 0; y < size; y++) {
-			for (int x = 0; x < size; x++) {
-				double d = Math.hypot(x - c, y - c);
-				if (d <= 3.6) {
-					img.setRGB(x, y, d > 2.6 ? rim : (x < 3 && y < 3 ? hi : gold));
-				}
-			}
-		}
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		ImageIO.write(img, "PNG", out);
-		return out.toByteArray();
-	}
-
-	private static byte[] coinTexture(int rgb) throws Exception {
-		int size = 16;
-		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-		int r = (rgb >> 16) & 0xff, g = (rgb >> 8) & 0xff, b = rgb & 0xff;
-		int rim = 0xff000000 | (r * 2 / 3) << 16 | (g * 2 / 3) << 8 | (b * 2 / 3);
-		int face = 0xff000000 | rgb;
-		int hi = 0xff000000 | Math.min(255, r + 40) << 16 | Math.min(255, g + 40) << 8 | Math.min(255, b + 40);
-		double c = 7.5;
-		for (int y = 0; y < size; y++) {
-			for (int x = 0; x < size; x++) {
-				double d = Math.hypot(x - c, y - c);
-				if (d <= 7.0) {
-					int px = d > 5.5 ? rim : (x < 6 && y < 6 ? hi : face);
-					img.setRGB(x, y, px);
-				}
-			}
-		}
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		ImageIO.write(img, "PNG", out);
-		return out.toByteArray();
 	}
 }

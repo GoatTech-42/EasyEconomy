@@ -9,11 +9,13 @@ a server-side fabric economy mod for minecraft 26.3. geyser friendly by design (
 - a server shop you fully configure: items, prices, per-player buy limits
 - player shops: list items for sale, buy and sell between players
 - server-made challenges with coin rewards (advancements, obtaining items, and more).
-  completing one pops a vanilla advancement toast
+  completing one pops the golden "challenge complete" advancement toast
 - chest gui for everything, styled with vanilla item models and fonts. your
   own inventory stays fully usable while a menu is open. servers that enforce
-  the resource pack can set guiTitleBadge in the config for a coin badge in
-  every menu title
+  the resource pack can set guiTheme in the config for the full dark menu
+  skin: drawn backgrounds, pack icons on menu buttons, and a matching dark
+  look for plain chests. bedrock players through geyser always get the
+  plain vanilla look (their client can't draw java font glyphs)
 
 needs fabric loader and fabric api on the server only. clients need nothing;
 the resource pack is optional and only changes how things look.

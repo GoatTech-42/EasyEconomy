@@ -103,19 +103,36 @@ public abstract class MenuGui {
 
 	protected abstract Component title();
 
-	// Menu titles: gold and bold, optionally prefixed with the pack's coin
-	// glyph when the server enforces the resource pack (config flag).
-	protected static Component styledTitle(String text) {
-		net.minecraft.network.chat.MutableComponent title = Component.literal(text)
-				.withStyle(style -> style.withItalic(false).withColor(ChatFormatting.GOLD).withBold(true));
-		if (dev.easyeconomy.config.ConfigManager.get().guiTitleBadge) {
-			return Component.literal("\uE000 ")
-					.withStyle(style -> style.withFont(new net.minecraft.network.chat.FontDescription.Resource(
-							net.minecraft.resources.Identifier.fromNamespaceAndPath("easyeconomy", "gui")))
-							.withColor(ChatFormatting.WHITE))
-					.append(title);
+	// Menu titles. When the gui theme is on (guiTheme in the config, or the
+	// legacy guiTitleBadge flag) and the player is not on Bedrock, the title
+	// paints the pack's full gui skin behind the menu: a shift glyph moves
+	// the pen to the menu's left edge, the background glyph for this row
+	// count draws the skin, and a second shift glyph returns the pen so the
+	// title text lands where it always did. Without the pack (or for Bedrock
+	// players through Geyser, whose client can't use Java fonts) the title
+	// stays plain gold text and the vanilla menu look is untouched.
+	protected Component styledTitle(String text) {
+		if (themed()) {
+			String frame = "\uE020" + (char) ('\uE010' + rows) + "\uE021";
+			return Component.literal(frame)
+					.withStyle(style -> style
+							.withFont(new net.minecraft.network.chat.FontDescription.Resource(
+									net.minecraft.resources.Identifier.fromNamespaceAndPath("easyeconomy", "gui")))
+							.withColor(ChatFormatting.WHITE).withItalic(false))
+					.append(Component.literal(text).withStyle(style -> style
+							.withItalic(false).withColor(ChatFormatting.WHITE).withBold(true)));
 		}
-		return title;
+		return Component.literal(text)
+				.withStyle(style -> style.withItalic(false).withColor(ChatFormatting.GOLD).withBold(true));
+	}
+
+	// True when this player should see the pack's themed menus: the theme is
+	// enabled server-wide and the client can actually render Java font
+	// glyphs (Bedrock clients through Geyser cannot).
+	protected boolean themed() {
+		dev.easyeconomy.config.EeConfig config = dev.easyeconomy.config.ConfigManager.get();
+		return (config.guiTheme || config.guiTitleBadge)
+				&& !dev.easyeconomy.util.Bedrock.isBedrock(player.getUUID());
 	}
 
 	protected abstract void onClick(int slot, int button, ContainerInput input);
@@ -144,6 +161,18 @@ public abstract class MenuGui {
 					.map(line -> (Component) Component.literal(line)
 							.withStyle(style -> style.withItalic(false).withColor(ChatFormatting.GRAY)))
 					.toList()));
+		}
+		return stack;
+	}
+
+	// A button with a pack icon model. The custom model is only set for
+	// themed players; everyone else gets the plain vanilla item, so menus
+	// stay readable without the pack and on Bedrock.
+	protected ItemStack display(Item item, String guiModel, String name, List<String> lore) {
+		ItemStack stack = display(item, name, lore);
+		if (themed()) {
+			stack.set(DataComponents.ITEM_MODEL,
+					net.minecraft.resources.Identifier.fromNamespaceAndPath("easyeconomy", "gui/" + guiModel));
 		}
 		return stack;
 	}

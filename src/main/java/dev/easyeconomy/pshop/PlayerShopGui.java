@@ -57,9 +57,10 @@ public final class PlayerShopGui extends MenuGui {
 				set(i, ItemStack.EMPTY);
 			}
 		}
-		set(PREV, MenuGui.display(Items.ARROW, "Previous Page", List.of()));
-		set(NEXT, MenuGui.display(Items.ARROW, "Next Page", List.of()));
-		set(TOGGLE, MenuGui.display(mineOnly ? Items.CHEST : Items.ENDER_CHEST,
+		set(PREV, display(Items.ARROW, "nav_prev", "Previous Page", List.of()));
+		set(NEXT, display(Items.ARROW, "nav_next", "Next Page", List.of()));
+		set(TOGGLE, display(mineOnly ? Items.CHEST : Items.ENDER_CHEST,
+				mineOnly ? "listings_all" : "listings_mine",
 				mineOnly ? "Back to All Listings" : "My Listings",
 				List.of(mineOnly ? "" : "Click to manage your listings.")));
 	}

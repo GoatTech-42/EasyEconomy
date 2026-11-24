@@ -53,6 +53,9 @@ public final class ShopGui extends MenuGui {
 				Item icon = itemOr(cat.icon, Items.CHEST);
 				set(slot++, MenuGui.display(icon, cat.name, List.of(cat.items.size() + " items.", "Click to open.")));
 			}
+			set(container.getContainerSize() - 1,
+					display(net.minecraft.world.item.Items.GOLD_NUGGET, "balance", "Balance",
+							List.of("You have " + economy.format(economy.core().balance(player.getUUID())) + ".")));
 		} else {
 			int shown = Math.min(category.items.size(), container.getContainerSize() - 1);
 			for (int i = 0; i < shown; i++) {
@@ -60,7 +63,7 @@ public final class ShopGui extends MenuGui {
 				set(i, entryButton(entry));
 			}
 			set(container.getContainerSize() - 1,
-					MenuGui.display(Items.ARROW, "Back", List.of("Back to categories.")));
+					display(Items.ARROW, "back", "Back", List.of("Back to categories.")));
 		}
 	}
 

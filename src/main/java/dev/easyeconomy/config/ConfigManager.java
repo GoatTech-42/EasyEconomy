@@ -144,9 +144,14 @@ public final class ConfigManager {
 		  // most listings one player can have open in the player shop
 		  "maxListingsPerPlayer": 10,
 
-		  // show the pack's coin glyph before chest gui titles. enable only
-		  // when the resource pack is enforced in server.properties, or the
-		  // glyph shows as a box for players without the pack
+		  // skin chest menus with the pack's dark gui theme (custom drawn
+		  // backgrounds, pack icons on menu buttons). enable only when the
+		  // resource pack is enforced in server.properties, or the skin
+		  // glyphs show as boxes for players without the pack. bedrock
+		  // players through geyser always keep the plain look
+		  "guiTheme": false,
+
+		  // legacy alias for guiTheme, kept so existing configs keep working
 		  "guiTitleBadge": false,
 
 		  // built-in resource pack web server. off by default.

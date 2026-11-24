@@ -10,9 +10,13 @@ public final class EeConfig {
 	public String currencyBaseItem = "minecraft:paper";
 	public java.util.List<Long> denominations = java.util.List.of(1L, 5L, 10L, 50L, 100L);
 	public int maxListingsPerPlayer = 10;
-	// prefix chest gui titles with the pack's coin glyph. only turn this on
-	// when the resource pack is enforced on the server; without the pack
-	// the glyph char renders as a box
+	// skin chest menus with the pack's dark gui theme (custom backgrounds
+	// drawn through the title font, pack icons on menu buttons). only turn
+	// this on when the resource pack is enforced on the server; without the
+	// pack the skin glyphs render as boxes. bedrock players through geyser
+	// always get the plain look, either way.
+	public boolean guiTheme = false;
+	// legacy alias for guiTheme, kept so existing configs keep working
 	public boolean guiTitleBadge = false;
 	public PackServer packServer = new PackServer();
 
