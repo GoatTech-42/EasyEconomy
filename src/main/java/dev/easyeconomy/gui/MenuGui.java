@@ -27,8 +27,8 @@ import java.util.List;
 // any ghost items.
 public abstract class MenuGui {
 	// Title width budget. The pack's title bar runs x 0..175 with the coin
-	// motif at x161; bold vanilla glyphs advance at most 7px from the x8
-	// text start, so 21 characters always clear the motif.
+	// motif at x161; TitleFit keeps the painted title inside that budget
+	// using measured per-code-point bold advances.
 	// Guis currently open, keyed by their viewer, so a balance change can
 	// refresh the title (see tickRefresh). The map value (the gui) holds its
 	// viewer strongly, so the weak keys are never actually collected; the
