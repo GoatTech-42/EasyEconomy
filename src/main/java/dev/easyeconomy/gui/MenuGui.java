@@ -206,7 +206,11 @@ public abstract class MenuGui {
 							.withColor(ChatFormatting.WHITE).withItalic(false))
 					.append(Component.literal(text).withStyle(style -> style
 							.withFont(net.minecraft.network.chat.FontDescription.DEFAULT)
-							.withItalic(false).withColor(ChatFormatting.WHITE).withBold(true)));
+							.withItalic(false)
+							// dark on the vanilla-light skin (same as vanilla's
+							// container label #404040); white was for the dark skin
+							.withColor(net.minecraft.network.chat.TextColor.fromRgb(0x404040))
+							.withBold(true)));
 		}
 		return Component.literal(text)
 				.withStyle(style -> style.withItalic(false).withColor(ChatFormatting.GOLD).withBold(true));

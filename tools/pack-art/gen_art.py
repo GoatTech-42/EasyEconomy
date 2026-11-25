@@ -13,18 +13,19 @@ from PIL import Image
 OUT = os.path.join(os.path.dirname(__file__), "..", "..", "src", "main", "resources", "pack")
 
 # ---------------------------------------------------------------- palette
-# goattech house style: black and white, dark mode default. gold shows up
-# only where money itself is pictured (coins, the title coin motif).
-BG_TOP = (20, 20, 23)
-BG_BOT = (13, 13, 16)
-FRAME = (52, 52, 60)
-FRAME_HI = (66, 66, 76)
-TITLE_BG = (27, 27, 32)
-DIVIDER = (46, 46, 54)
-CELL_BORDER = (38, 38, 45)
-CELL_FILL = (11, 11, 14)
-CELL_SHADOW = (7, 7, 9)
-CELL_HI = (24, 24, 29)
+# vanilla-like container palette (Luke, 2026-11-25: "normal colors", no
+# black shop GUI). gold shows up only where money itself is pictured
+# (coins, the title coin motif).
+BG_TOP = (198, 198, 198)
+BG_BOT = (198, 198, 198)
+FRAME = (55, 55, 55)
+FRAME_HI = (255, 255, 255)
+TITLE_BG = (198, 198, 198)
+DIVIDER = (198, 198, 198)
+CELL_BORDER = (55, 55, 55)
+CELL_FILL = (139, 139, 139)
+CELL_SHADOW = (55, 55, 55)
+CELL_HI = (255, 255, 255)
 PILL = (168, 168, 174)
 PILL_EDGE = (104, 104, 112)
 GOLD = (216, 160, 60)
@@ -94,16 +95,11 @@ def gen_gui(rows):
             px[x, y] = rgba(TITLE_BG)
     for x in range(2, 174):
         px[x, 16] = rgba(DIVIDER)
-    # panel behind the chest grid groups it visually
+    # chest grid area keeps the flat body color (vanilla look); the
+    # slot visuals come from generic_54.png behind the cutouts
     for y in range(18, 17 + 18 * rows):
         for x in range(5, 171):
-            if px[x, y][3] and (x < 7 or x > 168 or True):
-                pass
-            px[x, y] = rgba((17, 17, 21))
-    # panel behind the chest grid groups it visually (cells stay clear)
-    for y in range(18, 17 + 18 * rows):
-        for x in range(5, 171):
-            px[x, y] = rgba((17, 17, 21))
+            px[x, y] = rgba(BG_TOP)
     # small coin motif, top right corner of the title bar
     coin_motif(px, 161, 5)
     coin_motif(px, 167, 6)
@@ -117,10 +113,8 @@ def gen_gui(rows):
             for dx in range(18):
                 px[cx + dx, cy + dy] = (0, 0, 0, 0)
 
-    # light pill behind the hard-coded dark "Inventory" label so it stays
-    # readable on the dark skin (label text top-left is at (8, 20+18*rows))
-    label_y = 20 + 18 * rows
-    pill_rect(px, 7, label_y - 2, 52, 11, PILL, PILL_EDGE)
+    # the hard-coded dark "Inventory" label (#404040) sits directly on
+    # the light body, same as vanilla - no pill needed
     return img
 
 
@@ -154,8 +148,8 @@ def paint_cell(px, cx, cy):
 
 
 def gen_vanilla_container():
-    """Dark reskin of vanilla's generic_54.png (256x256): what shows
-    through the transparent slot cutouts of the gui skin, and what plain
+    """Vanilla-palette generic_54.png (256x256): what shows through the
+    transparent slot cutouts of the gui skin, and what plain
     chests/barrels draw while the pack is on. Same coordinates as the
     vanilla texture."""
     img = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
@@ -184,11 +178,15 @@ def gen_vanilla_container():
             paint_cell(px, 7 + 18 * k, 139 + 18 * j)
     for k in range(9):
         paint_cell(px, 7 + 18 * k, 197)
-    # light pill behind the dark "Inventory" label (label top-left (8, 128))
-    pill_rect(px, 7, 126, 52, 11, PILL, PILL_EDGE)
-    # section frame at the bottom of the inventory region
-    for x in range(1, 175):
-        px[x, 221] = rgba(FRAME)
+    # outer bevel: white top/left, dark bottom/right (vanilla frame)
+    for x in range(176):
+        px[x, 0] = rgba(FRAME_HI)
+        px[x, 222] = rgba(FRAME)
+    for y in range(223):
+        px[0, y] = rgba(FRAME_HI)
+        px[175, y] = rgba(FRAME)
+    # the dark "Inventory" label (#404040) reads directly on the light
+    # body (label top-left (8, 128)) - no pill
     return img
 
 
