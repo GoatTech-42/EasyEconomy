@@ -11,10 +11,11 @@
 	},
 	"license": "MIT",
 	"icon": "assets/easyeconomy/icon.png",
-	"environment": "server",
+	"environment": "*",
 	"mixins": [ "easyeconomy.mixins.json" ],
 	"entrypoints": {
-		"main": [ "dev.easyeconomy.EasyEconomyMod" ]
+		"main": [ "dev.easyeconomy.EasyEconomyMod" ],
+		"client": [ "dev.easyeconomy.pack.EasyEconomyClientPack" ]
 	},
 	"depends": {
 		"fabricloader": ">=0.19.5",

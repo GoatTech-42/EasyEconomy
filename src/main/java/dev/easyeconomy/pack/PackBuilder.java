@@ -23,19 +23,24 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-// Builds easyeconomy-pack.zip from the crafted textures and models under
-// src/main/resources/pack (made by tools/pack-art/gen_art.py): the dark gui
-// skins drawn over chest menus through a font glyph, coin and menu-icon
-// item models, the title badge glyph, and pack.mcmeta. Denominations are
-// config-driven, so one small items/coin_<value>.json per denomination is
-// generated here and pointed at the tier texture for its rank.
+// Builds easyeconomy-pack.zip from the pack tree under
+// src/main/resources/resourcepacks/gui (crafted by tools/pack-art/gen_art.py):
+// the vanilla-light gui skins drawn over chest menus through a font glyph,
+// coin and menu-icon item models, the title badge glyph, and pack.mcmeta.
+// The same tree is registered on clients as an always-enabled builtin pack
+// (EasyEconomyClientPack), so the zip is only the fallback for clients
+// without the mod: it goes in the server run dir so an admin can host it
+// anywhere, and the built-in PackServer can serve it when enabled.
 //
-// The zip goes in the server run dir so an admin can host it anywhere, and
-// the built-in PackServer can serve it when enabled.
+// Denominations are config-driven, so one small items/coin_<value>.json per
+// denomination is generated here and pointed at the tier texture for its
+// rank, replacing the static default-denomination files the builtin pack
+// carries.
 public final class PackBuilder {
 	private static final int MAX_TIER = 7;
 
-	// everything below assets/easyeconomy/, copied from /pack/ verbatim
+	// everything under /resourcepacks/gui/ except pack.mcmeta, pack.png and
+	// the config-driven coin item files, copied verbatim (real pack layout)
 	private static final String[] STATIC_FILES = staticFiles();
 
 	public record Built(Path zip, String sha1) {
@@ -52,16 +57,11 @@ public final class PackBuilder {
 				put(zip, "pack.png", icon);
 			}
 			for (String file : STATIC_FILES) {
-				byte[] data = resourceBytes("/pack/" + file);
+				byte[] data = resourceBytes("/resourcepacks/gui/" + file);
 				if (data == null) {
-					throw new IllegalStateException("missing bundled pack file: /pack/" + file);
+					throw new IllegalStateException("missing bundled pack file: /resourcepacks/gui/" + file);
 				}
-				// files under pack/minecraft/ override vanilla assets; the rest
-				// live in the mod's own namespace
-				String target = file.startsWith("minecraft/")
-						? "assets/" + file
-						: "assets/easyeconomy/" + file;
-				put(zip, target, data);
+				put(zip, file, data);
 			}
 			int tier = 0;
 			for (long d : denoms) {
@@ -79,24 +79,24 @@ public final class PackBuilder {
 
 	private static String[] staticFiles() {
 		java.util.List<String> files = new java.util.ArrayList<>();
-		files.add("font/gui.json");
-		files.add("textures/font/gui_title.png");
-		// dark reskin of the vanilla generic container texture: it shows
-		// through the gui skin's transparent slot cutouts and restyles plain
-		// chests to match while the pack is on
-		files.add("minecraft/textures/gui/container/generic_54.png");
+		files.add("assets/easyeconomy/font/gui.json");
+		files.add("assets/easyeconomy/textures/font/gui_title.png");
+		// vanilla-light reskin of the vanilla generic container texture: it
+		// shows through the gui skin's transparent slot cutouts and restyles
+		// plain chests to match while the pack is on
+		files.add("assets/minecraft/textures/gui/container/generic_54.png");
 		String[] guiIcons = {"back", "nav_prev", "nav_next", "listings_all", "listings_mine", "balance"};
 		for (int rows = 1; rows <= 6; rows++) {
-			files.add("textures/font/gui_bg_" + rows + ".png");
+			files.add("assets/easyeconomy/textures/font/gui_bg_" + rows + ".png");
 		}
 		for (int tier = 0; tier <= MAX_TIER; tier++) {
-			files.add("textures/item/coin_tier" + tier + ".png");
-			files.add("models/item/coin_tier" + tier + ".json");
+			files.add("assets/easyeconomy/textures/item/coin_tier" + tier + ".png");
+			files.add("assets/easyeconomy/models/item/coin_tier" + tier + ".json");
 		}
 		for (String icon : guiIcons) {
-			files.add("textures/item/gui/" + icon + ".png");
-			files.add("models/item/gui/" + icon + ".json");
-			files.add("items/gui/" + icon + ".json");
+			files.add("assets/easyeconomy/textures/item/gui/" + icon + ".png");
+			files.add("assets/easyeconomy/models/item/gui/" + icon + ".json");
+			files.add("assets/easyeconomy/items/gui/" + icon + ".json");
 		}
 		return files.toArray(new String[0]);
 	}
