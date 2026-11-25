@@ -41,7 +41,16 @@ public final class ShopGui extends MenuGui {
 
 	@Override
 	protected Component title() {
-		return styledTitle(category == null ? "Shop" : "Shop - " + category.name);
+		// the balance sits in the title next to the pack's coin motif, so it
+		// is always visible and not only in a hover tooltip. Category pages
+		// lead with the category name: "Shop - Valuables · 25.6k coins" would
+		// overflow the title bar, and the Back button keeps the context.
+		String base = category == null ? "Shop" : category.name;
+		return styledTitle(base + " \u00b7 " + balanceText());
+	}
+
+	private String balanceText() {
+		return economy.formatCompact(economy.core().balance(player.getUUID()));
 	}
 
 	private void fill() {
@@ -136,7 +145,8 @@ public final class ShopGui extends MenuGui {
 		if (result == ShopService.BuyResult.OK || result == ShopService.BuyResult.OK_PARTIAL
 				|| result == ShopService.BuyResult.OK_SAVE_UNVERIFIED
 				|| result == ShopService.BuyResult.OK_PARTIAL_SAVE_UNVERIFIED) {
-			fill(); // refresh limit counts
+			// reopen so both the limit counts and the title balance refresh
+			new ShopGui(player, shop, economy, category).open();
 		}
 	}
 }

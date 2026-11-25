@@ -31,7 +31,7 @@ public final class ChallengesGui extends MenuGui {
 
 	@Override
 	protected Component title() {
-		return styledTitle("Challenges");
+		return styledTitle("Challenges \u00b7 " + economy.formatCompact(economy.core().balance(player.getUUID())));
 	}
 
 	private void fill() {
@@ -64,6 +64,7 @@ public final class ChallengesGui extends MenuGui {
 
 	@Override
 	protected void onClick(int slot, int button, ContainerInput input) {
-		fill(); // read-only gui: a click just refreshes progress
+		// reopen so the progress lore and the title balance both refresh
+		open(player, service, economy);
 	}
 }

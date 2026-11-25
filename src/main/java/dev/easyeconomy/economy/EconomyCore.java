@@ -105,4 +105,27 @@ public final class EconomyCore {
 		balances.clear();
 		balances.putAll(data);
 	}
+
+	// Compact "amount + currency" for tight spots like menu titles, where
+	// the full grouped number would overflow the bar: 250 -> "250 coins",
+	// 12_400 -> "12.4k coins", 3_200_000 -> "3.2M coins", 1_000_000_000 ->
+	// "1B coins". One decimal, dropped when it is zero. Exact amounts under
+	// 1000 keep the singular/plural rule; larger ones always read plural.
+	public static String compact(long amount, String singular, String plural) {
+		if (amount < 1_000) {
+			return amount + " " + (amount == 1 ? singular : plural);
+		}
+		if (amount < 1_000_000) {
+			return trim(amount / 1_000.0) + "k " + plural;
+		}
+		if (amount < 1_000_000_000) {
+			return trim(amount / 1_000_000.0) + "M " + plural;
+		}
+		return trim(amount / 1_000_000_000.0) + "B " + plural;
+	}
+
+	private static String trim(double value) {
+		String s = String.format(java.util.Locale.ROOT, "%.1f", value);
+		return s.endsWith(".0") ? s.substring(0, s.length() - 2) : s;
+	}
 }

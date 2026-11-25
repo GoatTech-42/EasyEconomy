@@ -151,6 +151,18 @@ public final class TestEconomyCore {
 		check("no money created or destroyed under race", finalTotal == seededTotal);
 		check("race did real work", ops.get() > 3000);
 
+		// compact titles: exact under 1000 with singular/plural, one trimmed
+		// decimal above, always plural once abbreviated
+		check("compact zero", EconomyCore.compact(0, "coin", "coins").equals("0 coins"));
+		check("compact singular", EconomyCore.compact(1, "coin", "coins").equals("1 coin"));
+		check("compact under 1000", EconomyCore.compact(999, "coin", "coins").equals("999 coins"));
+		check("compact exact k", EconomyCore.compact(1_000, "coin", "coins").equals("1k coins"));
+		check("compact k decimal", EconomyCore.compact(12_400, "coin", "coins").equals("12.4k coins"));
+		check("compact k rounds down", EconomyCore.compact(12_449, "coin", "coins").equals("12.4k coins"));
+		check("compact exact M", EconomyCore.compact(1_000_000, "coin", "coins").equals("1M coins"));
+		check("compact M decimal", EconomyCore.compact(3_200_000, "coin", "coins").equals("3.2M coins"));
+		check("compact B", EconomyCore.compact(1_000_000_000L, "coin", "coins").equals("1B coins"));
+
 		System.out.println("PASS " + checks + " assertions");
 
 	}

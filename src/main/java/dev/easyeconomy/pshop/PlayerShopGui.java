@@ -43,7 +43,8 @@ public final class PlayerShopGui extends MenuGui {
 
 	@Override
 	protected Component title() {
-		return styledTitle(mineOnly ? "My Listings" : "Player Shop");
+		String base = mineOnly ? "My Listings" : "Player Shop";
+		return styledTitle(base + " \u00b7 " + economy.formatCompact(economy.core().balance(player.getUUID())));
 	}
 
 	private void fill() {
