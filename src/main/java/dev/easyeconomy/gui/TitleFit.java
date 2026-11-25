@@ -15,16 +15,18 @@ public final class TitleFit {
 	private TitleFit() {
 	}
 
-	// Bold advance of one code point. ASCII printable glyphs are at most
-	// 5px wide: 5 + 1 spacing + 1 bold = 7. Anything outside ASCII printable
-	// falls back to the unicode pages, whose glyphs reach 8px wide (Æ is
-	// ~8px): 8 + 1 spacing + 1 bold = 10. Narrow ASCII ('i', 'l', 't')
-	// overpays, which only shortens a title, never overflows it.
+	// Bold advance of one code point, from measured vanilla default-font
+	// advances: the widest ASCII printable glyphs ('@', '~') are 6px wide,
+	// so 6 + 1 spacing + 1 bold = 8; the widest observed unicode-fallback
+	// glyph (Æ, U+00C6) measures 9px, so 9 + 1 + 1 = 11. These bounds cover
+	// the vanilla providers behind ASCII printable and the unicode pages we
+	// measured (latin supplement, cyrillic); they are a policy, not a proof
+	// for every code point.
 	public static int advance(int codePoint) {
 		if (codePoint >= 32 && codePoint < 127) {
-			return 7;
+			return 8;
 		}
-		return 10;
+		return 11;
 	}
 
 	public static int width(String s) {

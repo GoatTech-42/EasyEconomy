@@ -30,9 +30,10 @@ public abstract class MenuGui {
 	// motif at x161; bold vanilla glyphs advance at most 7px from the x8
 	// text start, so 21 characters always clear the motif.
 	// Guis currently open, keyed by their viewer, so a balance change can
-	// refresh the title (see tickRefresh). Entries are pruned every tick once
-	// the menu is no longer open; weak keys are only a backstop so a viewer
-	// who logs out between ticks leaks the entry at most until the next GC.
+	// refresh the title (see tickRefresh). The map value (the gui) holds its
+	// viewer strongly, so the weak keys are never actually collected; the
+	// per-tick prune in tickRefresh is what removes entries once the menu is
+	// no longer open. The map stays weak only as harmless belt-and-braces.
 	private static final java.util.WeakHashMap<ServerPlayer, MenuGui> OPEN = new java.util.WeakHashMap<>();
 
 	// Per-viewer tick of the last menu click, for the tickRefresh debounce.

@@ -173,25 +173,30 @@ public final class TestEconomyCore {
 		check("compact max long", EconomyCore.compact(Long.MAX_VALUE).equals("9.2E"));
 
 		// title fitting: pixel budget 151 (x8 text start, coin motif at x161,
-		// 2px gap), per-code-point advances, no surrogate splits
+		// 2px gap), measured per-code-point bold advances (ASCII worst 8 for
+		// '@'/'~', unicode fallback worst 11 for AE), no surrogate splits.
+		// Expected values below are computed independently of TitleFit.width.
 		check("fit short title untouched", TitleFit.fit("Shop", "· 250").equals("Shop · 250"));
-		check("fit 21 ascii base still truncates with tail",
-				TitleFit.width(TitleFit.fit("a".repeat(21), "· 999.9M")) <= TitleFit.TITLE_BUDGET_PX);
-		check("fit ascii worst case ends with tail",
-				TitleFit.fit("a".repeat(21), "· 999.9M").endsWith("… · 999.9M"));
-		check("fit wide latin (AE) stays in frame",
-				TitleFit.width(TitleFit.fit("Æ".repeat(21), "· 1")) <= TitleFit.TITLE_BUDGET_PX);
-		check("fit wide cyrillic (Zhe) stays in frame",
-				TitleFit.width(TitleFit.fit("Ж".repeat(21), "· 1")) <= TitleFit.TITLE_BUDGET_PX);
-		String surrogateBase = "a".repeat(10) + "\uD83D\uDE00" + "a".repeat(10);
-		String surrogateFit = TitleFit.fit(surrogateBase, "· 1");
+		String asciiFit = TitleFit.fit("a".repeat(21), "· 999.9M");
+		check("fit 21 ascii truncates to 8 + tail", asciiFit.equals("aaaaaaaa… · 999.9M"));
+		check("fit ascii expected width", TitleFit.width(asciiFit) == 8 * 8 + 11 + 8 + 11 + 8 + 6 * 8);
+		check("fit 17 at-signs truncates to 13 + tail",
+				TitleFit.fit("@".repeat(17), "· 1").equals("@".repeat(13) + "… · 1"));
+		check("fit 17 tildes truncates to 13 + tail",
+				TitleFit.fit("~".repeat(17), "· 1").equals("~".repeat(13) + "… · 1"));
+		check("fit wide latin (AE) truncates to 9 + tail",
+				TitleFit.fit("Æ".repeat(21), "· 1").equals("Æ".repeat(9) + "… · 1"));
+		check("fit wide cyrillic (Zhe) truncates to 9 + tail",
+				TitleFit.fit("Ж".repeat(21), "· 1").equals("Ж".repeat(9) + "… · 1"));
+		String surrogateFit = TitleFit.fit("a".repeat(10) + "\uD83D\uDE00" + "a".repeat(10), "· 1");
 		check("fit keeps whole surrogate pairs",
 				surrogateFit.startsWith("a".repeat(10) + "\uD83D\uDE00") && !surrogateFit.contains("\uFFFD"));
 		check("fit never splits surrogate even at cut",
 				TitleFit.fit("a".repeat(14) + "\uD83D\uDE00" + "a".repeat(10), "· 1")
-						.codePoints().count() <= 14 + 2 + 6);
-		check("fit degenerate long tail still fits",
-				TitleFit.width(TitleFit.fit("Æ".repeat(30), "· 9223372036.9B")) <= TitleFit.TITLE_BUDGET_PX);
+						.equals("a".repeat(13) + "… · 1"));
+		String degenerate = TitleFit.fit("Æ".repeat(30), "· 9223372036.9B");
+		check("fit degenerate long tail drops base",
+				degenerate.equals("… · 9223372036.9B") && TitleFit.width(degenerate) <= TitleFit.TITLE_BUDGET_PX);
 
 		System.out.println("PASS " + checks + " assertions");
 
