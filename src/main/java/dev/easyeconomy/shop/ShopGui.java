@@ -42,15 +42,25 @@ public final class ShopGui extends MenuGui {
 	@Override
 	protected Component title() {
 		// the balance sits in the title next to the pack's coin motif, so it
-		// is always visible and not only in a hover tooltip. Category pages
-		// lead with the category name: "Shop - Valuables · 25.6k coins" would
-		// overflow the title bar, and the Back button keeps the context.
-		String base = category == null ? "Shop" : category.name;
-		return styledTitle(base + " \u00b7 " + balanceText());
+		// is always visible and not only in a hover tooltip. fitTitle keeps
+		// the worst case inside the bar; the motif carries the unit.
+		return styledTitle(fitTitle(category == null ? "Shop" : category.name,
+				"\u00b7 " + dev.easyeconomy.economy.EconomyCore.compact(balanceForTitle())));
 	}
 
-	private String balanceText() {
-		return economy.formatCompact(economy.core().balance(player.getUUID()));
+	@Override
+	protected boolean hasBalanceTitle() {
+		return true;
+	}
+
+	@Override
+	protected long balanceForTitle() {
+		return economy.core().balance(player.getUUID());
+	}
+
+	@Override
+	protected void reopenSelf() {
+		new ShopGui(player, shop, economy, category).open();
 	}
 
 	private void fill() {
@@ -146,7 +156,7 @@ public final class ShopGui extends MenuGui {
 				|| result == ShopService.BuyResult.OK_SAVE_UNVERIFIED
 				|| result == ShopService.BuyResult.OK_PARTIAL_SAVE_UNVERIFIED) {
 			// reopen so both the limit counts and the title balance refresh
-			new ShopGui(player, shop, economy, category).open();
+			reopenSelf();
 		}
 	}
 }

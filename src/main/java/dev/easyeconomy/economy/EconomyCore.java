@@ -106,26 +106,27 @@ public final class EconomyCore {
 		balances.putAll(data);
 	}
 
-	// Compact "amount + currency" for tight spots like menu titles, where
-	// the full grouped number would overflow the bar: 250 -> "250 coins",
-	// 12_400 -> "12.4k coins", 3_200_000 -> "3.2M coins", 1_000_000_000 ->
-	// "1B coins". One decimal, dropped when it is zero. Exact amounts under
-	// 1000 keep the singular/plural rule; larger ones always read plural.
-	public static String compact(long amount, String singular, String plural) {
+	// Compact amount for tight spots like menu titles, where the full grouped
+	// number would overflow the bar: 250 -> "250", 12_400 -> "12.4k",
+	// 3_200_000 -> "3.2M", 1_000_000_000 -> "1B", Long.MAX_VALUE -> "9.2E".
+	// One decimal, dropped when it is zero. Units step k M B T Q E so even a
+	// Long.MAX_VALUE config cap stays short, and a value that rounds up to
+	// 1000 of one unit moves to the next (999_950 -> "1M", not "1000k").
+	public static String compact(long amount) {
 		if (amount < 1_000) {
-			return amount + " " + (amount == 1 ? singular : plural);
+			return Long.toString(amount);
 		}
-		if (amount < 1_000_000) {
-			return trim(amount / 1_000.0) + "k " + plural;
+		final String[] units = {"k", "M", "B", "T", "Q", "E"};
+		final double[] steps = {1e3, 1e6, 1e9, 1e12, 1e15, 1e18};
+		for (int i = 0; i < units.length; i++) {
+			if (amount < steps[i] * 1000 || i == units.length - 1) {
+				long tenths = Math.round(amount / steps[i] * 10);
+				if (tenths >= 10_000 && i < units.length - 1) {
+					continue; // rounds to 1000 of this unit: step up
+				}
+				return tenths % 10 == 0 ? (tenths / 10) + units[i] : (tenths / 10) + "." + (tenths % 10) + units[i];
+			}
 		}
-		if (amount < 1_000_000_000) {
-			return trim(amount / 1_000_000.0) + "M " + plural;
-		}
-		return trim(amount / 1_000_000_000.0) + "B " + plural;
-	}
-
-	private static String trim(double value) {
-		String s = String.format(java.util.Locale.ROOT, "%.1f", value);
-		return s.endsWith(".0") ? s.substring(0, s.length() - 2) : s;
+		return Long.toString(amount); // unreachable
 	}
 }

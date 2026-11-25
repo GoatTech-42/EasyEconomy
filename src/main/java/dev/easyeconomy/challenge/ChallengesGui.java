@@ -31,7 +31,23 @@ public final class ChallengesGui extends MenuGui {
 
 	@Override
 	protected Component title() {
-		return styledTitle("Challenges \u00b7 " + economy.formatCompact(economy.core().balance(player.getUUID())));
+		return styledTitle(fitTitle("Challenges",
+				"\u00b7 " + dev.easyeconomy.economy.EconomyCore.compact(balanceForTitle())));
+	}
+
+	@Override
+	protected boolean hasBalanceTitle() {
+		return true;
+	}
+
+	@Override
+	protected long balanceForTitle() {
+		return economy.core().balance(player.getUUID());
+	}
+
+	@Override
+	protected void reopenSelf() {
+		open(player, service, economy);
 	}
 
 	private void fill() {
@@ -65,6 +81,6 @@ public final class ChallengesGui extends MenuGui {
 	@Override
 	protected void onClick(int slot, int button, ContainerInput input) {
 		// reopen so the progress lore and the title balance both refresh
-		open(player, service, economy);
+		reopenSelf();
 	}
 }

@@ -60,6 +60,7 @@ public final class EasyEconomyMod implements ModInitializer {
 			economy.autosaveTick();
 			shop.autosaveTick();
 			challenges.tick(server);
+			dev.easyeconomy.gui.MenuGui.tickRefresh(economy);
 			dev.easyeconomy.challenge.ChallengeToast.tick(server);
 		});
 		CommandRegistrationCallback.EVENT.register((dispatcher, access, env) ->

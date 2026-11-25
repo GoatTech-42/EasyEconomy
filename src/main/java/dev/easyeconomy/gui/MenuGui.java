@@ -26,10 +26,20 @@ import java.util.List;
 // chest rows. After each click the menu is re-synced so the client drops
 // any ghost items.
 public abstract class MenuGui {
+	// Title width budget. The pack's title bar runs x 0..175 with the coin
+	// motif at x161; bold vanilla glyphs advance at most 7px from the x8
+	// text start, so 21 characters always clear the motif.
+	private static final int TITLE_CHARS = 21;
+
+	// Guis currently open, keyed by their viewer, so a balance change can
+	// refresh the title (see tickRefresh). Weak keys drop logged-out players.
+	private static final java.util.WeakHashMap<ServerPlayer, MenuGui> OPEN = new java.util.WeakHashMap<>();
+
 	protected final ServerPlayer player;
 	protected final SimpleContainer container;
 	protected final int rows;
 	private ChestMenu menu;
+	private long titleBalance;
 
 	protected MenuGui(ServerPlayer player, int rows) {
 		this.player = player;
@@ -91,17 +101,74 @@ public abstract class MenuGui {
 				public void removed(Player closer) {
 					// vanilla settlement first: a stack still on the cursor goes
 					// back into the player's inventory (or drops at their feet),
-					// then the gui's own close hook runs
+					// then the gui deregisters and its own close hook runs
 					super.removed(closer);
-					onClose();
+					closed();
 				}
 			};
 			return menu;
 		}, title());
+		titleBalance = balanceForTitle();
+		OPEN.put(player, this);
 		player.openMenu(provider);
 	}
 
 	protected abstract Component title();
+
+	// Builds base + " " + tail (tail is "· " + the compact balance) within
+	// the title budget, cutting an over-long base (custom category names from
+	// the config) with an ellipsis so the string never reaches the motif.
+	protected static String fitTitle(String base, String tail) {
+		if (base.length() + 1 + tail.length() <= TITLE_CHARS) {
+			return base + " " + tail;
+		}
+		int room = Math.max(1, TITLE_CHARS - tail.length() - 2);
+		return base.substring(0, Math.min(room, base.length())) + "\u2026 " + tail;
+	}
+
+	// Menus that show the balance in their title override these three.
+	protected boolean hasBalanceTitle() {
+		return false;
+	}
+
+	protected long balanceForTitle() {
+		return 0;
+	}
+
+	// Reopen this exact view (same category, page, filter) so the title
+	// repaints; there is no title-update packet for an open container.
+	protected abstract void reopenSelf();
+
+	// Every tick: any open balance-title menu whose viewer's balance moved
+	// since the title was painted (a /pay received, seller proceeds, an eco
+	// grant) is reopened so the number is never stale. Reopen-on-click covers
+	// the menu's own actions; this covers everything else.
+	public static void tickRefresh(dev.easyeconomy.economy.EconomyService economy) {
+		if (OPEN.isEmpty()) {
+			return;
+		}
+		for (java.util.Map.Entry<ServerPlayer, MenuGui> entry
+				: new java.util.ArrayList<>(OPEN.entrySet())) {
+			ServerPlayer viewer = entry.getKey();
+			MenuGui gui = entry.getValue();
+			if (viewer.containerMenu != gui.menu) {
+				OPEN.remove(viewer, gui);
+				continue;
+			}
+			if (!gui.hasBalanceTitle()
+					|| economy.core().balance(viewer.getUUID()) == gui.titleBalance) {
+				continue;
+			}
+			// a reopen settles a stack carried on the cursor back into the
+			// inventory, so wait for a tick where the cursor is empty; a buy
+			// or chest click always leaves it empty, so this only defers the
+			// refresh while the viewer is mid-drag in their own rows
+			if (!viewer.containerMenu.getCarried().isEmpty()) {
+				continue;
+			}
+			gui.reopenSelf();
+		}
+	}
 
 	// Menu titles. When the gui theme is on (guiTheme in the config, or the
 	// legacy guiTitleBadge flag) and the player is not on Bedrock, the title
@@ -137,6 +204,11 @@ public abstract class MenuGui {
 	}
 
 	protected abstract void onClick(int slot, int button, ContainerInput input);
+
+	private void closed() {
+		OPEN.remove(player, this);
+		onClose();
+	}
 
 	protected void onClose() {
 	}

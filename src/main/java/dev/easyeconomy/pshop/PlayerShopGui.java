@@ -43,8 +43,23 @@ public final class PlayerShopGui extends MenuGui {
 
 	@Override
 	protected Component title() {
-		String base = mineOnly ? "My Listings" : "Player Shop";
-		return styledTitle(base + " \u00b7 " + economy.formatCompact(economy.core().balance(player.getUUID())));
+		return styledTitle(fitTitle(mineOnly ? "My Listings" : "Player Shop",
+				"\u00b7 " + dev.easyeconomy.economy.EconomyCore.compact(balanceForTitle())));
+	}
+
+	@Override
+	protected boolean hasBalanceTitle() {
+		return true;
+	}
+
+	@Override
+	protected long balanceForTitle() {
+		return economy.core().balance(player.getUUID());
+	}
+
+	@Override
+	protected void reopenSelf() {
+		new PlayerShopGui(player, service, economy, mineOnly, page).open();
 	}
 
 	private void fill() {

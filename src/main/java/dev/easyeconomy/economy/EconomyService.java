@@ -46,11 +46,6 @@ public final class EconomyService {
 		return amount + " " + (amount == 1 ? config.currencySingular : config.currencyPlural);
 	}
 
-	// Short "amount + currency" for menu titles; see EconomyCore.compact.
-	public String formatCompact(long amount) {
-		EeConfig config = ConfigManager.get();
-		return EconomyCore.compact(amount, config.currencySingular, config.currencyPlural);
-	}
 
 	public void changed() {
 		dirty = true;

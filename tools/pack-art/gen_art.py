@@ -25,6 +25,8 @@ CELL_BORDER = (38, 38, 45)
 CELL_FILL = (11, 11, 14)
 CELL_SHADOW = (7, 7, 9)
 CELL_HI = (24, 24, 29)
+PILL = (168, 168, 174)
+PILL_EDGE = (104, 104, 112)
 GOLD = (216, 160, 60)
 GOLD_DARK = (138, 100, 32)
 GOLD_HI = (248, 217, 140)
@@ -115,10 +117,23 @@ def gen_gui(rows):
             for dx in range(18):
                 px[cx + dx, cy + dy] = (0, 0, 0, 0)
 
-    # no pill behind the "Inventory" label: vanilla draws it in a fixed
-    # dark gray a pack cannot recolor, so a dark chip would swallow it and
-    # a light one fights the title bar. The faint label sits on the skin.
+    # light pill behind the hard-coded dark "Inventory" label so it stays
+    # readable on the dark skin (label text top-left is at (8, 20+18*rows))
+    label_y = 20 + 18 * rows
+    pill_rect(px, 7, label_y - 2, 52, 11, PILL, PILL_EDGE)
     return img
+
+
+def pill_rect(px, x0, y0, w, h, fill, edge):
+    for y in range(y0, y0 + h):
+        for x in range(x0, x0 + w):
+            corner = (x in (x0, x0 + w - 1)) and (y in (y0, y0 + h - 1))
+            if corner:
+                continue
+            if x in (x0, x0 + w - 1) or y in (y0, y0 + h - 1):
+                px[x, y] = rgba(edge)
+            else:
+                px[x, y] = rgba(fill)
 
 
 def paint_cell(px, cx, cy):
@@ -169,7 +184,8 @@ def gen_vanilla_container():
             paint_cell(px, 7 + 18 * k, 139 + 18 * j)
     for k in range(9):
         paint_cell(px, 7 + 18 * k, 197)
-    # no pill behind the "Inventory" label (same reasoning as gen_gui)
+    # light pill behind the dark "Inventory" label (label top-left (8, 128))
+    pill_rect(px, 7, 126, 52, 11, PILL, PILL_EDGE)
     # section frame at the bottom of the inventory region
     for x in range(1, 175):
         px[x, 221] = rgba(FRAME)

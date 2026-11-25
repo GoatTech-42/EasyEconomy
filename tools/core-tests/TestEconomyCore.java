@@ -151,17 +151,25 @@ public final class TestEconomyCore {
 		check("no money created or destroyed under race", finalTotal == seededTotal);
 		check("race did real work", ops.get() > 3000);
 
-		// compact titles: exact under 1000 with singular/plural, one trimmed
-		// decimal above, always plural once abbreviated
-		check("compact zero", EconomyCore.compact(0, "coin", "coins").equals("0 coins"));
-		check("compact singular", EconomyCore.compact(1, "coin", "coins").equals("1 coin"));
-		check("compact under 1000", EconomyCore.compact(999, "coin", "coins").equals("999 coins"));
-		check("compact exact k", EconomyCore.compact(1_000, "coin", "coins").equals("1k coins"));
-		check("compact k decimal", EconomyCore.compact(12_400, "coin", "coins").equals("12.4k coins"));
-		check("compact k rounds down", EconomyCore.compact(12_449, "coin", "coins").equals("12.4k coins"));
-		check("compact exact M", EconomyCore.compact(1_000_000, "coin", "coins").equals("1M coins"));
-		check("compact M decimal", EconomyCore.compact(3_200_000, "coin", "coins").equals("3.2M coins"));
-		check("compact B", EconomyCore.compact(1_000_000_000L, "coin", "coins").equals("1B coins"));
+		// compact titles: exact under 1000, one trimmed decimal above, units
+		// step k M B T Q E so even a Long.MAX_VALUE config cap stays short,
+		// and a value rounding up to 1000 of a unit moves to the next one
+		check("compact zero", EconomyCore.compact(0).equals("0"));
+		check("compact one", EconomyCore.compact(1).equals("1"));
+		check("compact under 1000", EconomyCore.compact(999).equals("999"));
+		check("compact exact k", EconomyCore.compact(1_000).equals("1k"));
+		check("compact k decimal", EconomyCore.compact(12_400).equals("12.4k"));
+		check("compact k rounds down", EconomyCore.compact(12_449).equals("12.4k"));
+		check("compact rounds half up", EconomyCore.compact(12_450).equals("12.5k"));
+		check("compact exact M", EconomyCore.compact(1_000_000).equals("1M"));
+		check("compact M decimal", EconomyCore.compact(3_200_000).equals("3.2M"));
+		check("compact B", EconomyCore.compact(1_000_000_000L).equals("1B"));
+		check("compact near default max", EconomyCore.compact(999_900_000).equals("999.9M"));
+		check("compact 999950 steps up", EconomyCore.compact(999_950).equals("1M"));
+		check("compact 999999 steps up", EconomyCore.compact(999_999).equals("1M"));
+		check("compact 999999999 steps up", EconomyCore.compact(999_999_999).equals("1B"));
+		check("compact near B step", EconomyCore.compact(999_950_000_000L).equals("1T"));
+		check("compact max long", EconomyCore.compact(Long.MAX_VALUE).equals("9.2E"));
 
 		System.out.println("PASS " + checks + " assertions");
 
