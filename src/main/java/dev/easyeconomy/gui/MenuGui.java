@@ -29,11 +29,21 @@ public abstract class MenuGui {
 	// Title width budget. The pack's title bar runs x 0..175 with the coin
 	// motif at x161; bold vanilla glyphs advance at most 7px from the x8
 	// text start, so 21 characters always clear the motif.
-	private static final int TITLE_CHARS = 21;
-
 	// Guis currently open, keyed by their viewer, so a balance change can
-	// refresh the title (see tickRefresh). Weak keys drop logged-out players.
+	// refresh the title (see tickRefresh). Entries are pruned every tick once
+	// the menu is no longer open; weak keys are only a backstop so a viewer
+	// who logs out between ticks leaks the entry at most until the next GC.
 	private static final java.util.WeakHashMap<ServerPlayer, MenuGui> OPEN = new java.util.WeakHashMap<>();
+
+	// Per-viewer tick of the last menu click, for the tickRefresh debounce.
+	private static final java.util.WeakHashMap<ServerPlayer, Integer> LAST_CLICK = new java.util.WeakHashMap<>();
+	private static int tick;
+
+	// Ticks a balance refresh waits after the viewer's last click, so an
+	// outside balance change never reopens the menu from under a click that
+	// is already in flight (the reopen would recenter the cursor and, in the
+	// player shop, shift sold listings before the click lands).
+	private static final int CLICK_DEBOUNCE_TICKS = 10;
 
 	protected final ServerPlayer player;
 	protected final SimpleContainer container;
@@ -52,6 +62,7 @@ public abstract class MenuGui {
 			menu = new ChestMenu(typeFor(rows), syncId, inv, container, rows) {
 				@Override
 				public void clicked(int slot, int button, ContainerInput input, Player clicker) {
+					LAST_CLICK.put(MenuGui.this.player, tick);
 					int chestSlots = container.getContainerSize();
 					if (slot >= 0 && slot < chestSlots) {
 						// a button row: act on it, never move items
@@ -116,14 +127,12 @@ public abstract class MenuGui {
 	protected abstract Component title();
 
 	// Builds base + " " + tail (tail is "· " + the compact balance) within
-	// the title budget, cutting an over-long base (custom category names from
-	// the config) with an ellipsis so the string never reaches the motif.
+	// the title's pixel budget (TitleFit), cutting an over-long base (custom
+	// category names from the config) by code points with an ellipsis so the
+	// painted string never reaches the coin motif at x161, wide unicode
+	// glyphs included.
 	protected static String fitTitle(String base, String tail) {
-		if (base.length() + 1 + tail.length() <= TITLE_CHARS) {
-			return base + " " + tail;
-		}
-		int room = Math.max(1, TITLE_CHARS - tail.length() - 2);
-		return base.substring(0, Math.min(room, base.length())) + "\u2026 " + tail;
+		return TitleFit.fit(base, tail);
 	}
 
 	// Menus that show the balance in their title override these three.
@@ -144,6 +153,7 @@ public abstract class MenuGui {
 	// grant) is reopened so the number is never stale. Reopen-on-click covers
 	// the menu's own actions; this covers everything else.
 	public static void tickRefresh(dev.easyeconomy.economy.EconomyService economy) {
+		tick++;
 		if (OPEN.isEmpty()) {
 			return;
 		}
@@ -164,6 +174,13 @@ public abstract class MenuGui {
 			// or chest click always leaves it empty, so this only defers the
 			// refresh while the viewer is mid-drag in their own rows
 			if (!viewer.containerMenu.getCarried().isEmpty()) {
+				continue;
+			}
+			// debounce: a click in the last few ticks means the viewer is about
+			// to act on what they see; an outside balance change can wait a
+			// half second rather than reopen the menu from under that click
+			Integer lastClick = LAST_CLICK.get(viewer);
+			if (lastClick != null && tick - lastClick < CLICK_DEBOUNCE_TICKS) {
 				continue;
 			}
 			gui.reopenSelf();

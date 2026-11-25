@@ -1,5 +1,6 @@
 import dev.easyeconomy.economy.EconomyCore;
 import dev.easyeconomy.economy.JsonlLedger;
+import dev.easyeconomy.gui.TitleFit;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -170,6 +171,27 @@ public final class TestEconomyCore {
 		check("compact 999999999 steps up", EconomyCore.compact(999_999_999).equals("1B"));
 		check("compact near B step", EconomyCore.compact(999_950_000_000L).equals("1T"));
 		check("compact max long", EconomyCore.compact(Long.MAX_VALUE).equals("9.2E"));
+
+		// title fitting: pixel budget 151 (x8 text start, coin motif at x161,
+		// 2px gap), per-code-point advances, no surrogate splits
+		check("fit short title untouched", TitleFit.fit("Shop", "· 250").equals("Shop · 250"));
+		check("fit 21 ascii base still truncates with tail",
+				TitleFit.width(TitleFit.fit("a".repeat(21), "· 999.9M")) <= TitleFit.TITLE_BUDGET_PX);
+		check("fit ascii worst case ends with tail",
+				TitleFit.fit("a".repeat(21), "· 999.9M").endsWith("… · 999.9M"));
+		check("fit wide latin (AE) stays in frame",
+				TitleFit.width(TitleFit.fit("Æ".repeat(21), "· 1")) <= TitleFit.TITLE_BUDGET_PX);
+		check("fit wide cyrillic (Zhe) stays in frame",
+				TitleFit.width(TitleFit.fit("Ж".repeat(21), "· 1")) <= TitleFit.TITLE_BUDGET_PX);
+		String surrogateBase = "a".repeat(10) + "\uD83D\uDE00" + "a".repeat(10);
+		String surrogateFit = TitleFit.fit(surrogateBase, "· 1");
+		check("fit keeps whole surrogate pairs",
+				surrogateFit.startsWith("a".repeat(10) + "\uD83D\uDE00") && !surrogateFit.contains("\uFFFD"));
+		check("fit never splits surrogate even at cut",
+				TitleFit.fit("a".repeat(14) + "\uD83D\uDE00" + "a".repeat(10), "· 1")
+						.codePoints().count() <= 14 + 2 + 6);
+		check("fit degenerate long tail still fits",
+				TitleFit.width(TitleFit.fit("Æ".repeat(30), "· 9223372036.9B")) <= TitleFit.TITLE_BUDGET_PX);
 
 		System.out.println("PASS " + checks + " assertions");
 
