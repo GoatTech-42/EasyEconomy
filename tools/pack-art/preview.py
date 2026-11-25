@@ -73,7 +73,9 @@ def render(rows, title, out):
             canvas.alpha_composite(item, (40 + cx + 1, 40 + cy + 1))
     canvas.alpha_composite(bg, (40, 40))
 
-    draw_text(canvas, 40 + 8, 40 + 6, title, (255, 255, 255), bold=True)
+    # themed title is dark (#404040) on the vanilla-light skin, matching
+    # MenuGui.styledTitle; white was for the old dark skin.
+    draw_text(canvas, 40 + 8, 40 + 6, title, (64, 64, 64), bold=True)
     draw_text(canvas, 40 + 8, 40 + 20 + 18 * rows, "Inventory", (64, 64, 64))
 
     canvas = canvas.resize((canvas.width * SCALE, canvas.height * SCALE), Image.NEAREST)
