@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates the easyeconomy resource-pack art into src/main/resources/pack/.
+"""Generates the easyeconomy resource-pack art into src/main/resources/resourcepacks/gui/.
 
 Everything is drawn pixel by pixel here so the pack ships real, crafted
 textures instead of runtime-generated shapes. Re-run after edits; the
@@ -10,7 +10,7 @@ import os
 
 from PIL import Image
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "..", "src", "main", "resources", "pack")
+OUT = os.path.join(os.path.dirname(__file__), "..", "..", "src", "main", "resources", "resourcepacks", "gui", "assets")
 
 # ---------------------------------------------------------------- palette
 # vanilla-like container palette (Luke, 2026-11-25: "normal colors", no
@@ -431,6 +431,10 @@ def gen_badge():
 
 # ---------------------------------------------------------------- io
 def save(img, rel):
+    # vanilla overrides live under assets/minecraft/, our own assets under
+    # assets/easyeconomy/ (real pack layout inside the mod jar)
+    if not rel.startswith("minecraft/"):
+        rel = os.path.join("easyeconomy", rel)
     path = os.path.join(OUT, rel)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     img.save(path)

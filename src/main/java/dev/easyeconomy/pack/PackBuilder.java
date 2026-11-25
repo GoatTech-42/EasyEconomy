@@ -101,6 +101,10 @@ public final class PackBuilder {
 		return files.toArray(new String[0]);
 	}
 
+	// The fallback zip derives its pack format from the game version, but the
+	// builtin pack's static pack.mcmeta (src/main/resources/resourcepacks/gui/
+	// pack.mcmeta) pins min/max [97,1] for MC 26.3 by hand: bump it when
+	// retargeting the mod to a newer Minecraft.
 	private static byte[] packMeta() {
 		PackFormat format = DetectedVersion.BUILT_IN.packVersion(PackType.CLIENT_RESOURCES);
 		PackMetadataSection section = new PackMetadataSection(

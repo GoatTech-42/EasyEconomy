@@ -8,7 +8,7 @@ import sys
 from PIL import Image
 
 HERE = os.path.dirname(__file__)
-PACK = os.path.join(HERE, "..", "..", "src", "main", "resources", "pack")
+PACK = os.path.join(HERE, "..", "..", "src", "main", "resources", "resourcepacks", "gui", "assets")
 VAN = "/tmp/mcassets/assets/minecraft"
 SCALE = 3
 
@@ -56,7 +56,7 @@ def slot_items(rows):
 
 
 def render(rows, title, out):
-    bg = Image.open(os.path.join(PACK, f"textures/font/gui_bg_{rows}.png")).convert("RGBA")
+    bg = Image.open(os.path.join(PACK, f"easyeconomy/textures/font/gui_bg_{rows}.png")).convert("RGBA")
     vanilla = Image.open(os.path.join(PACK, "minecraft/textures/gui/container/generic_54.png")).convert("RGBA")
     w, h = bg.size
     canvas = Image.new("RGBA", (w + 80, h + 80), (9, 9, 12, 255))
